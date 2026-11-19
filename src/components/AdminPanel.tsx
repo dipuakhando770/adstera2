@@ -4,10 +4,13 @@ import {
   CheckCircle2,
   Code2,
   ExternalLink,
+  Globe,
   PauseCircle,
   Pencil,
   PlayCircle,
   PlaySquare,
+  Plus,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -18,6 +21,7 @@ import {
 import type {
   AbuseReport,
   AdminStats,
+  CustomDomain,
   LinkRecord,
   PublicUser,
   SocialMetadataPreview,
@@ -51,7 +55,7 @@ export function AdminPanel() {
   const { user, navigate, refreshPublicSettings } = useApp();
   const { notify } = useToast();
 
-  const [tab, setTab] = useState<'overview' | 'video-previews' | 'users' | 'links' | 'reports' | 'settings'>('overview');
+  const [tab, setTab] = useState<'overview' | 'video-previews' | 'domains' | 'users' | 'links' | 'reports' | 'settings'>('overview');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [userSearch, setUserSearch] = useState('');
@@ -63,6 +67,13 @@ export function AdminPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [probingGlobalVideo, setProbingGlobalVideo] = useState(false);
   const [globalProbeSummary, setGlobalProbeSummary] = useState<string>('');
+
+  // Subdomains & Cloudflare Routing state
+  const [domains, setDomains] = useState<CustomDomain[]>([]);
+  const [newHostname, setNewHostname] = useState('');
+  const [newIsDefault, setNewIsDefault] = useState(false);
+  const [addingDomain, setAddingDomain] = useState(false);
+  const [syncingDomainId, setSyncingDomainId] = useState<string | null>(null);
 
   // Admin Video Preview Edit & Metadata Inspection Modals
   const [editingVideoLink, setEditingVideoLink] = useState<LinkRecord | null>(null);
@@ -122,13 +133,113 @@ export function AdminPanel() {
     }
   }, []);
 
+  const loadDomains = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/domains', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setDomains(data.domains || []);
+      }
+    } catch (err) {
+      console.error('Failed to load domains', err);
+    }
+  }, []);
+
+  const handleAddDomain = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newHostname.trim()) {
+      notify('Please enter a subdomain or hostname', 'error');
+      return;
+    }
+    setAddingDomain(true);
+    try {
+      const res = await fetch('/api/admin/domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          hostname: newHostname.trim(),
+          isDefault: newIsDefault,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        notify(data.error || 'Failed to add subdomain', 'error');
+      } else {
+        notify(data.message || 'Subdomain added successfully!', 'success');
+        setNewHostname('');
+        setNewIsDefault(false);
+        loadDomains();
+      }
+    } catch {
+      notify('Network error adding subdomain', 'error');
+    } finally {
+      setAddingDomain(false);
+    }
+  };
+
+  const handleToggleDefaultDomain = async (id: string, currentDefault: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/domains/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ isDefault: !currentDefault }),
+      });
+      if (res.ok) {
+        notify(!currentDefault ? 'Domain set as default' : 'Domain default status unset', 'success');
+        loadDomains();
+      }
+    } catch {
+      notify('Failed to update domain', 'error');
+    }
+  };
+
+  const handleDeleteDomain = async (id: string, hostname: string) => {
+    if (!confirm(`Are you sure you want to delete ${hostname}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/domains/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        notify(`Deleted ${hostname}`, 'success');
+        loadDomains();
+      }
+    } catch {
+      notify('Failed to delete domain', 'error');
+    }
+  };
+
+  const handleSyncDomain = async (id: string) => {
+    setSyncingDomainId(id);
+    try {
+      const res = await fetch(`/api/admin/domains/${id}/sync`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (res.ok && data.cloudflare?.success) {
+        notify('Cloudflare DNS & SSL verified!', 'success');
+      } else {
+        notify(data.cloudflare?.error || 'Domain verified', 'info');
+      }
+      loadDomains();
+    } catch {
+      notify('Sync request failed', 'error');
+    } finally {
+      setSyncingDomainId(null);
+    }
+  };
+
   useEffect(() => {
     if (!user || user.role !== 'admin') return;
     loadOverview();
     loadUsers();
     loadAllLinks();
     loadSettings();
-  }, [user, loadOverview, loadUsers, loadAllLinks, loadSettings]);
+    loadDomains();
+  }, [user, loadOverview, loadUsers, loadAllLinks, loadSettings, loadDomains]);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') return;
@@ -136,6 +247,7 @@ export function AdminPanel() {
       loadOverview();
       loadUsers();
       loadAllLinks();
+      loadDomains();
     };
     window.addEventListener('nasirlink:data-changed', refreshAdmin);
     window.addEventListener('focus', refreshAdmin);
@@ -143,7 +255,7 @@ export function AdminPanel() {
       window.removeEventListener('nasirlink:data-changed', refreshAdmin);
       window.removeEventListener('focus', refreshAdmin);
     };
-  }, [user, loadOverview, loadUsers, loadAllLinks]);
+  }, [user, loadOverview, loadUsers, loadAllLinks, loadDomains]);
 
   if (!user || user.role !== 'admin') {
     return (
@@ -438,6 +550,7 @@ export function AdminPanel() {
             [
               { id: 'overview', label: 'Stats' },
               { id: 'video-previews', label: `Video Previews (${videoLinks.length})` },
+              { id: 'domains', label: `Subdomains & Cloudflare (${domains.length})` },
               { id: 'users', label: `Users (${users.length})` },
               { id: 'links', label: `Moderation (${allLinks.length})` },
               { id: 'reports', label: `Reports (${reports.filter((r) => r.status === 'pending').length})` },
@@ -638,6 +751,93 @@ export function AdminPanel() {
               data={stats.dailyRegistrations.map((d) => ({ label: d.date, value: d.count }))}
             />
           </ChartCard>
+        </div>
+      )}
+
+      {/* Subdomains & Cloudflare Tab */}
+      {tab === 'domains' && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-5">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-semibold text-slate-900 dark:text-white">Subdomains &amp; Cloudflare Auto-Configuration</h3>
+          </div>
+
+          {/* Cloudflare credentials note */}
+          <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 rounded-lg p-3">
+            Configure Cloudflare API Token, Zone ID, and Target CNAME in System Settings to enable auto-DNS provisioning.
+          </div>
+
+          {/* Add subdomain form */}
+          <form onSubmit={handleAddDomain} className="flex flex-wrap gap-2 items-end">
+            <div className="flex-1 min-w-48">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Subdomain or Domain (e.g. s1.cinexbd.site)
+              </label>
+              <input
+                type="text"
+                value={newHostname}
+                onChange={(e) => setNewHostname(e.target.value)}
+                placeholder="s1.yourdomain.com"
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm font-mono text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 pb-2 cursor-pointer">
+              <input type="checkbox" checked={newIsDefault} onChange={(e) => setNewIsDefault(e.target.checked)} />
+              Default
+            </label>
+            <button
+              type="submit"
+              disabled={addingDomain}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white transition-colors whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {addingDomain ? 'Adding...' : 'Add Subdomain'}
+            </button>
+          </form>
+
+          {/* Domains list */}
+          <div className="space-y-2">
+            {domains.length === 0 && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 text-center py-6">
+                No subdomains configured yet. Add one above.
+              </div>
+            )}
+            {domains.map((domain) => (
+              <div key={domain.id} className="flex items-center gap-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3">
+                <Globe className="w-4 h-4 text-slate-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-sm text-slate-900 dark:text-white truncate">{domain.hostname}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    DNS: {domain.dnsStatus} · SSL: {domain.sslStatus}
+                    {domain.isDefault && <span className="ml-2 text-indigo-600 font-semibold">● Default</span>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSyncDomain(domain.id)}
+                  disabled={syncingDomainId === domain.id}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 disabled:opacity-50"
+                  title="Sync with Cloudflare"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleDefaultDomain(domain.id, domain.isDefault)}
+                  className="text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  {domain.isDefault ? 'Unset Default' : 'Set Default'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteDomain(domain.id, domain.hostname)}
+                  className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1138,6 +1338,81 @@ export function AdminPanel() {
 
             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
               Platform note: X (Twitter) inline Player Card rendering requires the sharing domain to be allowlisted with X Player Card support, reachable over public HTTPS by X crawlers, and paired with a valid <code className="font-mono">video/mp4</code> stream supporting HTTP <code className="font-mono">206</code> Byte-Range requests.
+            </div>
+
+            {/* Cloudflare Auto-DNS Configuration */}
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Cloudflare Auto-DNS Configuration (Subdomain Manager)
+                </h4>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                When configured, adding a subdomain will automatically create a proxied CNAME record in your Cloudflare DNS zone, enabling instant SSL and edge proxying.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Cloudflare API Token
+                  </label>
+                  <input
+                    type="password"
+                    value={settings.cloudflareApiToken || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, cloudflareApiToken: e.target.value || null })
+                    }
+                    placeholder="Bearer token with DNS:Edit permission"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Cloudflare Zone ID
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.cloudflareZoneId || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, cloudflareZoneId: e.target.value || null })
+                    }
+                    placeholder="Zone ID from Cloudflare dashboard overview"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    CNAME Target Hostname
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.cloudflareTargetCname || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, cloudflareTargetCname: e.target.value || null })
+                    }
+                    placeholder="e.g. nasirlink.com or your Worker hostname"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Cloudflare Account ID (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.cloudflareAccountId || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, cloudflareAccountId: e.target.value || null })
+                    }
+                    placeholder="Account ID for Cloudflare for SaaS (optional)"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

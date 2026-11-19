@@ -5,14 +5,21 @@ import QRCode from 'qrcode';
 import {
   computeAnalytics,
   createClickRecord,
+  createCustomDomain,
+  deleteCustomDomain,
   getAdminStats,
+  getCustomDomainById,
+  getCustomDomainByHostname,
   getDb,
   getSystemSettings,
+  listCustomDomains,
   listReports,
   mapLinkRow,
   mapUserRow,
+  updateCustomDomain,
   updateSystemSettings,
 } from './db.ts';
+import { configureCloudflareSubdomain } from './cloudflare.ts';
 import {
   createAnonymousVisitorId,
   generateSecureToken,
@@ -1709,8 +1716,150 @@ export function createApiRouter(): express.Router {
       globalVideoSourceUrl: normalizedGlobalSourceUrl,
       globalVideoOverride:
         typeof b.globalVideoOverride === 'boolean' ? b.globalVideoOverride : undefined,
+      cloudflareApiToken:
+        b.cloudflareApiToken === null
+          ? null
+          : typeof b.cloudflareApiToken === 'string'
+            ? b.cloudflareApiToken.trim() || null
+            : undefined,
+      cloudflareZoneId:
+        b.cloudflareZoneId === null
+          ? null
+          : typeof b.cloudflareZoneId === 'string'
+            ? b.cloudflareZoneId.trim() || null
+            : undefined,
+      cloudflareAccountId:
+        b.cloudflareAccountId === null
+          ? null
+          : typeof b.cloudflareAccountId === 'string'
+            ? b.cloudflareAccountId.trim() || null
+            : undefined,
+      cloudflareTargetCname:
+        b.cloudflareTargetCname === null
+          ? null
+          : typeof b.cloudflareTargetCname === 'string'
+            ? b.cloudflareTargetCname.trim() || null
+            : undefined,
     });
     res.json({ settings: updated });
+  });
+
+  // Public/user: list active domains
+  router.get('/domains', async (_req, res) => {
+    const list = listCustomDomains().filter((d) => d.domainStatus === 'active');
+    res.json({ domains: list });
+  });
+
+  // Admin: list all domains
+  router.get('/admin/domains', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const domains = listCustomDomains();
+    res.json({ domains });
+  });
+
+  // Admin: create domain/subdomain with auto Cloudflare DNS setup
+  router.post('/admin/domains', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const body = req.body || {};
+    const rawHostname = typeof body.hostname === 'string' ? body.hostname.trim() : '';
+    if (!rawHostname) {
+      res.status(400).json({ error: 'Subdomain or hostname is required.' });
+      return;
+    }
+
+    const cleanHost = rawHostname.toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    if (!cleanHost.includes('.') || cleanHost.length < 4 || cleanHost.length > 253) {
+      res.status(400).json({ error: 'Enter a valid subdomain or domain name (e.g. s1.cinexbd.site).' });
+      return;
+    }
+
+    const existing = getCustomDomainByHostname(cleanHost);
+    if (existing) {
+      res.status(409).json({ error: 'This domain or subdomain is already registered.' });
+      return;
+    }
+
+    const settings = getSystemSettings();
+    const cfResult = await configureCloudflareSubdomain({
+      hostname: cleanHost,
+      apiToken: settings.cloudflareApiToken,
+      zoneId: settings.cloudflareZoneId,
+      target: settings.cloudflareTargetCname || settings.domain,
+    });
+
+    const isDefault = Boolean(body.isDefault);
+    const domain = createCustomDomain({
+      hostname: cleanHost,
+      cloudflareMode: body.cloudflareMode === 'saas' ? 'saas' : 'zone',
+      cloudflareZoneId: settings.cloudflareZoneId || null,
+      cloudflareHostnameId: cfResult.recordId || null,
+      dnsStatus: cfResult.success ? (cfResult.recordId ? 'active' : 'verified') : 'pending',
+      sslStatus: cfResult.success ? 'active' : 'pending',
+      domainStatus: 'active',
+      isDefault,
+    });
+
+    res.status(201).json({
+      domain,
+      cloudflare: cfResult,
+      message: cfResult.success
+        ? 'Subdomain added and configured successfully!'
+        : `Subdomain registered. Note: ${cfResult.error}`,
+    });
+  });
+
+  // Admin: update domain (toggle default, status)
+  router.patch('/admin/domains/:id', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const domain = getCustomDomainById(req.params.id);
+    if (!domain) {
+      res.status(404).json({ error: 'Domain not found.' });
+      return;
+    }
+
+    const body = req.body || {};
+    const updated = updateCustomDomain(req.params.id, {
+      isDefault: typeof body.isDefault === 'boolean' ? body.isDefault : undefined,
+      domainStatus: ['active', 'suspended', 'maintenance'].includes(body.domainStatus) ? body.domainStatus : undefined,
+    });
+
+    res.json({ domain: updated });
+  });
+
+  // Admin: delete domain
+  router.delete('/admin/domains/:id', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const success = deleteCustomDomain(req.params.id);
+    if (!success) {
+      res.status(404).json({ error: 'Domain not found.' });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  // Admin: sync/verify domain with Cloudflare
+  router.post('/admin/domains/:id/sync', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+    const domain = getCustomDomainById(req.params.id);
+    if (!domain) {
+      res.status(404).json({ error: 'Domain not found.' });
+      return;
+    }
+
+    const settings = getSystemSettings();
+    const cfResult = await configureCloudflareSubdomain({
+      hostname: domain.hostname,
+      apiToken: settings.cloudflareApiToken,
+      zoneId: settings.cloudflareZoneId,
+      target: settings.cloudflareTargetCname || settings.domain,
+    });
+
+    const updated = updateCustomDomain(req.params.id, {
+      dnsStatus: cfResult.success ? 'active' : 'failed',
+      sslStatus: cfResult.success ? 'active' : 'pending',
+    });
+
+    res.json({ domain: updated, cloudflare: cfResult });
   });
 
   return router;

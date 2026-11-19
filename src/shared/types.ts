@@ -188,6 +188,10 @@ export interface SystemSettings {
   globalVideoDescription: string | null;
   globalVideoSourceUrl: string | null;
   globalVideoOverride: boolean;
+  cloudflareApiToken?: string | null;
+  cloudflareZoneId?: string | null;
+  cloudflareAccountId?: string | null;
+  cloudflareTargetCname?: string | null;
 }
 
 export interface AdminStats {

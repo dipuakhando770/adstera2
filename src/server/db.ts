@@ -7,6 +7,7 @@ import type {
   AdminStats,
   AnalyticsOverview,
   BreakdownItem,
+  CustomDomain,
   LinkRecord,
   PublicUser,
   RedirectStatusCode,
@@ -370,6 +371,10 @@ export function getSystemSettings(): SystemSettings {
     globalVideoDescription: map.get('global_video_description') || null,
     globalVideoSourceUrl: map.get('global_video_source_url') || null,
     globalVideoOverride: map.get('global_video_override') === 'true',
+    cloudflareApiToken: map.get('cloudflare_api_token') || null,
+    cloudflareZoneId: map.get('cloudflare_zone_id') || null,
+    cloudflareAccountId: map.get('cloudflare_account_id') || null,
+    cloudflareTargetCname: map.get('cloudflare_target_cname') || null,
   };
 }
 
@@ -426,6 +431,10 @@ export function updateSystemSettings(partial: Partial<SystemSettings>): SystemSe
   setOrDel('global_video_source_url', partial.globalVideoSourceUrl, now);
   if (partial.globalVideoOverride !== undefined)
     upsert.run('global_video_override', String(partial.globalVideoOverride), now);
+  setOrDel('cloudflare_api_token', partial.cloudflareApiToken, now);
+  setOrDel('cloudflare_zone_id', partial.cloudflareZoneId, now);
+  setOrDel('cloudflare_account_id', partial.cloudflareAccountId, now);
+  setOrDel('cloudflare_target_cname', partial.cloudflareTargetCname, now);
 
   return getSystemSettings();
 }
@@ -700,4 +709,151 @@ export function createClickRecord(params: {
     new Date().toISOString(),
     params.linkId
   );
+}
+
+export function mapDomainRow(row: Record<string, unknown>): CustomDomain {
+  return {
+    id: String(row.id),
+    userId: row.user_id ? String(row.user_id) : null,
+    hostname: String(row.hostname),
+    cloudflareMode: (row.cloudflare_mode as 'zone' | 'saas') || 'zone',
+    cloudflareZoneId: row.cloudflare_zone_id ? String(row.cloudflare_zone_id) : null,
+    cloudflareHostnameId: row.cloudflare_hostname_id ? String(row.cloudflare_hostname_id) : null,
+    dnsStatus: (row.dns_status as 'pending' | 'verified' | 'active' | 'failed') || 'pending',
+    sslStatus: (row.ssl_status as 'pending' | 'active' | 'failed') || 'pending',
+    domainStatus: (row.domain_status as 'active' | 'suspended' | 'maintenance') || 'active',
+    isDefault: Number(row.is_default) === 1,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+export function listCustomDomains(): CustomDomain[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM custom_domains ORDER BY is_default DESC, created_at DESC').all() as Record<string, unknown>[];
+  return rows.map(mapDomainRow);
+}
+
+export function getCustomDomainById(id: string): CustomDomain | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM custom_domains WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? mapDomainRow(row) : null;
+}
+
+export function getCustomDomainByHostname(hostname: string): CustomDomain | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM custom_domains WHERE hostname = ? COLLATE NOCASE').get(hostname.trim().toLowerCase()) as Record<string, unknown> | undefined;
+  return row ? mapDomainRow(row) : null;
+}
+
+export function getDefaultCustomDomain(): CustomDomain | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM custom_domains WHERE is_default = 1 LIMIT 1').get() as Record<string, unknown> | undefined;
+  return row ? mapDomainRow(row) : null;
+}
+
+export function createCustomDomain(data: {
+  userId?: string | null;
+  hostname: string;
+  cloudflareMode?: 'zone' | 'saas';
+  cloudflareZoneId?: string | null;
+  cloudflareHostnameId?: string | null;
+  dnsStatus?: 'pending' | 'verified' | 'active' | 'failed';
+  sslStatus?: 'pending' | 'active' | 'failed';
+  domainStatus?: 'active' | 'suspended' | 'maintenance';
+  isDefault?: boolean;
+}): CustomDomain {
+  const db = getDb();
+  const id = `dom_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const now = new Date().toISOString();
+  const cleanHost = data.hostname.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+
+  if (data.isDefault) {
+    db.prepare('UPDATE custom_domains SET is_default = 0').run();
+  }
+
+  db.prepare(`
+    INSERT INTO custom_domains (
+      id, user_id, hostname, cloudflare_mode, cloudflare_zone_id, cloudflare_hostname_id,
+      dns_status, ssl_status, domain_status, is_default, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    data.userId || null,
+    cleanHost,
+    data.cloudflareMode || 'zone',
+    data.cloudflareZoneId || null,
+    data.cloudflareHostnameId || null,
+    data.dnsStatus || 'active',
+    data.sslStatus || 'active',
+    data.domainStatus || 'active',
+    data.isDefault ? 1 : 0,
+    now,
+    now
+  );
+
+  return {
+    id,
+    userId: data.userId || null,
+    hostname: cleanHost,
+    cloudflareMode: data.cloudflareMode || 'zone',
+    cloudflareZoneId: data.cloudflareZoneId || null,
+    cloudflareHostnameId: data.cloudflareHostnameId || null,
+    dnsStatus: data.dnsStatus || 'active',
+    sslStatus: data.sslStatus || 'active',
+    domainStatus: data.domainStatus || 'active',
+    isDefault: Boolean(data.isDefault),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function updateCustomDomain(id: string, partial: Partial<CustomDomain>): CustomDomain | null {
+  const db = getDb();
+  const existing = getCustomDomainById(id);
+  if (!existing) return null;
+
+  if (partial.isDefault) {
+    db.prepare('UPDATE custom_domains SET is_default = 0 WHERE id != ?').run(id);
+  }
+
+  const now = new Date().toISOString();
+  const updated: CustomDomain = {
+    ...existing,
+    ...partial,
+    updatedAt: now,
+  };
+
+  db.prepare(`
+    UPDATE custom_domains SET
+      hostname = ?,
+      cloudflare_mode = ?,
+      cloudflare_zone_id = ?,
+      cloudflare_hostname_id = ?,
+      dns_status = ?,
+      ssl_status = ?,
+      domain_status = ?,
+      is_default = ?,
+      updated_at = ?
+    WHERE id = ?
+  `).run(
+    updated.hostname,
+    updated.cloudflareMode,
+    updated.cloudflareZoneId,
+    updated.cloudflareHostnameId,
+    updated.dnsStatus,
+    updated.sslStatus,
+    updated.domainStatus,
+    updated.isDefault ? 1 : 0,
+    now,
+    id
+  );
+
+  return updated;
+}
+
+export function deleteCustomDomain(id: string): boolean {
+  const db = getDb();
+  const res = db.prepare('DELETE FROM custom_domains WHERE id = ?').run(id);
+  return res.changes > 0;
 }
