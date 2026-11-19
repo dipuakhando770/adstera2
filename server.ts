@@ -234,6 +234,9 @@ async function startServer() {
   app.all('/player/:slug', handlePlayerPage);
   app.all('/embed/:slug', handlePlayerPage);
 
+const SOCIAL_CRAWLER_UA_REGEX =
+  /(twitterbot|xbot|x-card|twitter-card|cardvalidator|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|discordbot|telegrambot|whatsapp|slackbot|linkedinbot|pinterest|applebot|embedly|redditbot|skypeuripreview|skype|threads|bluesky|vkshare|iframely|quora link preview|mastodon|misskey|line-poker|kakaotalk-scrap|viber|snapchat|googlebot|bingbot|crawler|spider|preview|unfurl|curl|wget)/i;
+
   // Server-rendered metadata + uncloaked landing HTML for Public Video Preview Pages (/v/:slug and /video/:slug)
   const handleVideoPreviewPage = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -254,6 +257,19 @@ async function startServer() {
     const isExpired = link.expiresAt ? new Date(link.expiresAt).getTime() < Date.now() : false;
     const origin = getRequestOrigin(req);
     const settings = getSystemSettings();
+    const rawUa = String(req.headers['user-agent'] || '');
+    const isCrawler = SOCIAL_CRAWLER_UA_REGEX.test(rawUa) && req.query.preview !== '1';
+    if (isCrawler && link.isActive && !isExpired) {
+      const crawlerHtml = renderSocialCrawlerHtml(link, origin, req.path, settings);
+      res.status(200).set({
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=600',
+      });
+      if (req.method === 'HEAD') res.end();
+      else res.send(crawlerHtml);
+      return;
+    }
+
     const meta = buildSocialMetadata(link, origin, req.path, settings);
     const finalDest = appendUtmParams(link.destinationUrl, {
       source: link.utmSource,
@@ -293,6 +309,19 @@ async function startServer() {
     const origin = getRequestOrigin(req);
     const settings = getSystemSettings();
     const canonicalPath = `/s/${encodeURIComponent(link.slug)}`;
+    const rawUa = String(req.headers['user-agent'] || '');
+    const isCrawler = SOCIAL_CRAWLER_UA_REGEX.test(rawUa) && req.query.preview !== '1';
+    if (isCrawler && link.isActive && !isExpired) {
+      const crawlerHtml = renderSocialCrawlerHtml(link, origin, canonicalPath, settings);
+      res.status(200).set({
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=600',
+      });
+      if (req.method === 'HEAD') res.end();
+      else res.send(crawlerHtml);
+      return;
+    }
+
     const meta = buildSocialMetadata(link, origin, canonicalPath, settings);
     const finalDest = appendUtmParams(link.destinationUrl, {
       source: link.utmSource,
@@ -379,51 +408,75 @@ async function startServer() {
       return;
     }
     const link = mapLinkRow(row);
+    if (!link.isActive) {
+      res.status(410).type('text/plain').send('Poster unavailable');
+      return;
+    }
     const thumb = (link.thumbnailUrl || '').trim();
-    if (!link.isActive || !thumb) {
-      res.status(404).type('text/plain').send('Poster unavailable');
-      return;
-    }
 
-    const dataMatch = thumb.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
-    if (dataMatch) {
-      const mime = dataMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataMatch[1].toLowerCase();
-      const buf = Buffer.from(dataMatch[2], 'base64');
-      res.writeHead(200, {
-        'Content-Type': mime,
-        'Content-Length': String(buf.length),
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400',
-      });
-      if (req.method === 'HEAD') res.end();
-      else res.end(buf);
-      return;
-    }
-
-    if (thumb.startsWith('/src/assets/')) {
-      const localPath = path.resolve(process.cwd(), thumb.slice(1));
-      if (!fs.existsSync(localPath)) {
-        res.status(404).type('text/plain').send('Poster asset missing');
+    if (thumb) {
+      const dataMatch = thumb.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
+      if (dataMatch) {
+        const mime = dataMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataMatch[1].toLowerCase();
+        const buf = Buffer.from(dataMatch[2], 'base64');
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Content-Length': String(buf.length),
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400',
+        });
+        if (req.method === 'HEAD') res.end();
+        else res.end(buf);
         return;
       }
-      const stat = fs.statSync(localPath);
-      res.writeHead(200, {
-        'Content-Type': 'image/jpeg',
-        'Content-Length': String(stat.size),
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400',
-      });
-      if (req.method === 'HEAD') res.end();
-      else fs.createReadStream(localPath).pipe(res);
-      return;
+
+      if (thumb.startsWith('/src/assets/') || thumb.startsWith('/samples/')) {
+        const localPath = thumb.startsWith('/samples/')
+          ? path.resolve(process.cwd(), 'public', thumb.slice(1))
+          : path.resolve(process.cwd(), thumb.slice(1));
+        if (fs.existsSync(localPath)) {
+          const stat = fs.statSync(localPath);
+          res.writeHead(200, {
+            'Content-Type': 'image/jpeg',
+            'Content-Length': String(stat.size),
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400',
+          });
+          if (req.method === 'HEAD') res.end();
+          else fs.createReadStream(localPath).pipe(res);
+          return;
+        }
+      }
+
+      if (/^https?:\/\//i.test(thumb)) {
+        const safeThumb = validateSafeExternalUrl(thumb, false, false);
+        if (!safeThumb.valid || !safeThumb.normalizedUrl) {
+          res.status(400).type('text/plain').send('Invalid poster URL');
+          return;
+        }
+        res.redirect(302, safeThumb.normalizedUrl);
+        return;
+      }
     }
 
-    const safeThumb = validateSafeExternalUrl(thumb, false, false);
-    if (!safeThumb.valid || !safeThumb.normalizedUrl) {
-      res.status(400).type('text/plain').send('Invalid poster URL');
+    // Default first-party fallback poster (never 404 for active links)
+    const fallbackFile = (link.videoUrl || '').includes('showcase1.mp4')
+      ? 'edge-poster.jpg'
+      : 'default-poster.jpg';
+    const fallbackPath = path.resolve(process.cwd(), 'public/samples', fallbackFile);
+    if (!fs.existsSync(fallbackPath)) {
+      res.status(404).type('text/plain').send('Default poster missing');
       return;
     }
-    res.redirect(302, safeThumb.normalizedUrl);
+    const stat = fs.statSync(fallbackPath);
+    res.writeHead(200, {
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(stat.size),
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=86400',
+    });
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(fallbackPath).pipe(res);
   });
 
   // First-party Video Access URL (/media/:slug, /media/:slug.mp4, /media/:slug.webm)
@@ -568,8 +621,7 @@ async function startServer() {
     }
   });
 
-const SOCIAL_CRAWLER_UA_REGEX =
-  /(twitterbot|xbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|discordbot|telegrambot|whatsapp|slackbot|linkedinbot|pinterest|applebot|embedly|redditbot|skypeuripreview|vkshare|iframely|quora link preview|mastodon|misskey|line-poker|kakaotalk-scrap|viber|snapchat|googlebot|bingbot|crawler|spider|preview|unfurl|curl|wget)/i;
+  // Crawler user-agent matcher defined above near /v/:slug & /s/:slug
 
   // Short Slug Router: GET/HEAD /:slug (must run BEFORE Vite SPA fallback)
   app.all('/:slug', async (req, res, next) => {

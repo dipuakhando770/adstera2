@@ -65,6 +65,8 @@ export function AdminPanel() {
   // Admin Video Preview Edit & Metadata Inspection Modals
   const [editingVideoLink, setEditingVideoLink] = useState<LinkRecord | null>(null);
   const [editVideoUrl, setEditVideoUrl] = useState('');
+  const [editThumbUrl, setEditThumbUrl] = useState('');
+  const [editCardType, setEditCardType] = useState<'player' | 'summary_large_image'>('player');
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editWidth, setEditWidth] = useState(0);
@@ -346,6 +348,8 @@ export function AdminPanel() {
   const openVideoEditor = (link: LinkRecord) => {
     setEditingVideoLink(link);
     setEditVideoUrl(link.videoUrl || '');
+    setEditThumbUrl(link.thumbnailUrl || '');
+    setEditCardType(link.twitterCardType || 'player');
     setEditTitle(link.videoTitle || '');
     setEditDesc(link.videoDescription || '');
     setEditWidth(link.videoWidth || 0);
@@ -367,12 +371,12 @@ export function AdminPanel() {
           previewEnabled: editPreviewEnabled,
           autoRedirectSeconds: Number(editCountdown) || 0,
           videoUrl: editVideoUrl.trim() || null,
-          thumbnailUrl: null,
+          thumbnailUrl: editThumbUrl.trim() || null,
           videoTitle: editTitle.trim() || null,
           videoDescription: editDesc.trim() || null,
           videoWidth: editWidth > 0 ? Number(editWidth) : null,
           videoHeight: editHeight > 0 ? Number(editHeight) : null,
-          twitterCardType: 'player',
+          twitterCardType: editCardType,
         }),
       });
       const data = await res.json();
@@ -1192,6 +1196,38 @@ export function AdminPanel() {
                 onChange={(e) => setEditVideoUrl(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Poster / Thumbnail URL (optional)
+                </label>
+                <input
+                  type="text"
+                  value={editThumbUrl}
+                  onChange={(e) => setEditThumbUrl(e.target.value)}
+                  placeholder="/poster/:slug.jpg (auto fallback)"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  X Card Type
+                </label>
+                <select
+                  value={editCardType}
+                  onChange={(e) =>
+                    setEditCardType(
+                      e.target.value === 'summary_large_image' ? 'summary_large_image' : 'player'
+                    )
+                  }
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  <option value="player">Player Card (Inline Video)</option>
+                  <option value="summary_large_image">Summary Large Image Card</option>
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

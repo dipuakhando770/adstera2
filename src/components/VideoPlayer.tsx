@@ -16,12 +16,14 @@ interface VideoPlayerProps {
 
 export function VideoPlayer({
   src,
+  poster,
   mimeType,
   title,
   width,
   height,
   sourceUrl,
   sourceDomain,
+  showControlsBar = true,
   className = '',
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -42,7 +44,6 @@ export function VideoPlayer({
   useEffect(() => {
     const el = videoRef.current;
     if (!el || !src) return;
-    el.controls = false;
     el.muted = true;
     el.playsInline = true;
     const p = el.play();
@@ -109,14 +110,16 @@ export function VideoPlayer({
           <video
             ref={videoRef}
             key={src}
+            controls={showControlsBar}
             autoPlay
             muted
             playsInline
+            loop
             preload="auto"
+            poster={poster || undefined}
             aria-label={title || 'Video player'}
             onLoadedMetadata={(e) => {
               const el = e.currentTarget;
-              el.controls = false;
               if (el.videoWidth > 0 && el.videoHeight > 0) {
                 setNaturalDims({ w: el.videoWidth, h: el.videoHeight });
               }

@@ -90,6 +90,10 @@ export function LinkForm({
   const [campaignName, setCampaignName] = useState(editingLink?.campaignName || '');
   const [tagsInput, setTagsInput] = useState(editingLink?.tags.join(', ') || '');
   const [playerUrl, setPlayerUrl] = useState(editingLink?.playerUrl || '');
+  const [thumbnailUrl, setThumbnailUrl] = useState(editingLink?.thumbnailUrl || '');
+  const [twitterCardType, setTwitterCardType] = useState<'player' | 'summary_large_image'>(
+    editingLink?.twitterCardType || 'player'
+  );
   const [videoWidth, setVideoWidth] = useState(editingLink?.videoWidth || 0);
   const [videoHeight, setVideoHeight] = useState(editingLink?.videoHeight || 0);
 
@@ -139,6 +143,8 @@ export function LinkForm({
       setCampaignName(editingLink.campaignName || '');
       setTagsInput(editingLink.tags.join(', '));
       setPlayerUrl(editingLink.playerUrl || '');
+      setThumbnailUrl(editingLink.thumbnailUrl || '');
+      setTwitterCardType(editingLink.twitterCardType || 'player');
       setVideoWidth(editingLink.videoWidth || 0);
       setVideoHeight(editingLink.videoHeight || 0);
       setShowAdvanced(true);
@@ -319,10 +325,10 @@ export function LinkForm({
         videoUrl: effectiveLinkType === 'video' ? videoUrl.trim() || null : null,
         videoTitle: effectiveLinkType === 'video' ? videoTitle.trim() || null : null,
         videoDescription: effectiveLinkType === 'video' ? videoDescription.trim() || null : null,
-        thumbnailUrl: null,
+        thumbnailUrl: effectiveLinkType === 'video' && thumbnailUrl.trim() ? thumbnailUrl.trim() : null,
         videoWidth: videoWidth > 0 ? Number(videoWidth) : null,
         videoHeight: videoHeight > 0 ? Number(videoHeight) : null,
-        twitterCardType: 'player' as const,
+        twitterCardType,
         playerUrl: effectiveLinkType === 'video' && playerUrl.trim() ? playerUrl.trim() : null,
         redirectType,
         password: password.trim() || null,
@@ -363,6 +369,8 @@ export function LinkForm({
         setVideoUrl('');
         setVideoTitle('');
         setVideoDescription('');
+        setThumbnailUrl('');
+        setTwitterCardType('player');
         setVideoWidth(0);
         setVideoHeight(0);
       }
@@ -664,6 +672,38 @@ export function LinkForm({
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Poster / Thumbnail URL (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={thumbnailUrl}
+                      onChange={(e) => setThumbnailUrl(e.target.value)}
+                      placeholder="Auto /poster/:slug.jpg (required by X & OG)"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-2 focus:outline-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      X (Twitter) Card Type
+                    </label>
+                    <select
+                      value={twitterCardType}
+                      onChange={(e) =>
+                        setTwitterCardType(
+                          e.target.value === 'summary_large_image' ? 'summary_large_image' : 'player'
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="player">Player Card (Inline Video)</option>
+                      <option value="summary_large_image">Summary Large Image Card</option>
+                    </select>
+                  </div>
+                </div>
+
                 {/* Dimensions & Auto-Redirect Countdown */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                   <div>
@@ -769,10 +809,14 @@ export function LinkForm({
 
                 {(() => {
                   const previewAttr = getPreviewSourceDomain(videoUrl, publicSettings.domain);
+                  const previewPoster =
+                    thumbnailUrl.trim() ||
+                    (editingLink ? `/poster/${encodeURIComponent(editingLink.slug)}.jpg` : '/samples/default-poster.jpg');
                   return previewTab === 'landing' ? (
                     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 space-y-2.5">
                       <VideoPlayer
                         src={videoCheck.valid !== false ? videoUrl : ''}
+                        poster={previewPoster}
                         mimeType={videoCheck.mimeType}
                         title={videoTitle}
                         width={videoWidth}
@@ -799,11 +843,12 @@ export function LinkForm({
                   ) : (
                     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 space-y-2.5">
                       <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                        <span>twitter:card=player</span>
+                        <span>twitter:card={twitterCardType}</span>
                         <span>{videoWidth > 0 && videoHeight > 0 ? `${videoWidth}×${videoHeight}` : 'Auto aspect'}</span>
                       </div>
                       <VideoPlayer
                         src={videoCheck.valid !== false ? videoUrl : ''}
+                        poster={previewPoster}
                         mimeType={videoCheck.mimeType}
                         title={videoTitle}
                         width={videoWidth}

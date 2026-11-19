@@ -74,7 +74,10 @@ export function validateSafeExternalUrl(
     return { valid: true, normalizedUrl: trimmed };
   }
 
-  if (allowRelativeSample && trimmed.startsWith('/src/assets/')) {
+  if (
+    allowRelativeSample &&
+    (trimmed.startsWith('/src/assets/') || trimmed.startsWith('/samples/'))
+  ) {
     return { valid: true, normalizedUrl: trimmed };
   }
 

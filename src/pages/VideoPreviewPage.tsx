@@ -242,6 +242,7 @@ export function VideoPreviewPage({ slug }: { slug: string }) {
             {/* HTML5 Video Player */}
             <VideoPlayer
               src={metadata?.ogVideo || link.videoUrl || ''}
+              poster={metadata?.ogImage || `/poster/${encodeURIComponent(link.slug)}.jpg`}
               mimeType={metadata?.ogVideoType || link.videoMimeType}
               title={metadata?.title || link.videoTitle || link.slug}
               width={metadata?.ogVideoWidth || link.videoWidth}

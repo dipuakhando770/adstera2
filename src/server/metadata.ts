@@ -246,6 +246,15 @@ export function resolveEffectiveVideo(
   };
 }
 
+export function resolvePosterAccessUrl(link: LinkRecord, origin: string): string {
+  const { isLocal, safeOrigin } = normalizeOrigin(origin);
+  const thumb = (link.thumbnailUrl || '').trim();
+  if (/^https?:\/\//i.test(thumb)) {
+    return isLocal ? thumb : thumb.replace(/^http:\/\//i, 'https://');
+  }
+  return `${safeOrigin}/poster/${encodeURIComponent(link.slug)}.jpg`;
+}
+
 export function buildSocialMetadata(
   link: LinkRecord,
   origin: string,
@@ -267,69 +276,106 @@ export function buildSocialMetadata(
     }
   })();
 
-  const width = resolved.width > 0 ? Math.max(160, Math.min(3840, resolved.width)) : 0;
-  const height = resolved.height > 0 ? Math.max(90, Math.min(3840, resolved.height)) : 0;
+  const hasDetectedDims = resolved.width >= 160 && resolved.height >= 90;
+  const detectedWidth = hasDetectedDims ? Math.max(160, Math.min(3840, resolved.width)) : 0;
+  const detectedHeight = hasDetectedDims ? Math.max(90, Math.min(3840, resolved.height)) : 0;
 
   const playerUrl =
     resolveAbsoluteUrl(link.playerUrl, safeOrigin) ||
     `${safeOrigin}/embed/${encodeURIComponent(link.slug)}`;
   const oembedUrl = `${safeOrigin}/api/oembed?url=${encodeURIComponent(pageUrl)}`;
+  const posterUrl = resolvePosterAccessUrl(link, safeOrigin);
+  const isDefaultPoster = !/^https?:\/\//i.test((link.thumbnailUrl || '').trim());
 
   const secureVideoUrl = isLocal
     ? resolved.videoUrl
     : resolved.videoUrl.replace(/^http:\/\//i, 'https://');
 
   const hasValidVideo = resolved.hasValidVideo && Boolean(secureVideoUrl) && Boolean(resolved.mimeType);
-  const effectiveCardType = hasValidVideo ? 'player' : '';
+  // Always provide valid positive dimensions for X Player Card & OpenGraph video tags
+  const effectiveWidth = hasValidVideo ? (hasDetectedDims ? detectedWidth : 1280) : 0;
+  const effectiveHeight = hasValidVideo ? (hasDetectedDims ? detectedHeight : 720) : 0;
+  const effectiveCardType = hasValidVideo
+    ? link.twitterCardType === 'summary_large_image'
+      ? 'summary_large_image'
+      : 'player'
+    : 'summary_large_image';
+  const siteName = (globalConfig?.siteName || 'NasirLink').trim() || 'NasirLink';
 
   const metaLines: string[] = [];
 
   if (hasValidVideo) {
     metaLines.push(
-      `<meta name="twitter:card" content="player" />`,
+      `<meta name="twitter:card" content="${effectiveCardType}" />`,
       ...(host ? [`<meta name="twitter:domain" content="${escapeHtml(host)}" />`] : []),
       `<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`,
       ...(resolved.description
         ? [`<meta name="twitter:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
-      `<meta name="twitter:player" content="${escapeHtml(playerUrl)}" />`,
-      ...(width > 0 ? [`<meta name="twitter:player:width" content="${width}" />`] : []),
-      ...(height > 0 ? [`<meta name="twitter:player:height" content="${height}" />`] : []),
-      `<meta name="twitter:player:stream" content="${escapeHtml(secureVideoUrl)}" />`,
-      `<meta name="twitter:player:stream:content_type" content="${escapeHtml(resolved.mimeType)}" />`,
+      `<meta name="twitter:image" content="${escapeHtml(posterUrl)}" />`,
+      `<meta name="twitter:image:alt" content="${escapeHtml(resolved.title)}" />`,
+      ...(effectiveCardType === 'player'
+        ? [
+            `<meta name="twitter:player" content="${escapeHtml(playerUrl)}" />`,
+            `<meta name="twitter:player:width" content="${effectiveWidth}" />`,
+            `<meta name="twitter:player:height" content="${effectiveHeight}" />`,
+            `<meta name="twitter:player:stream" content="${escapeHtml(secureVideoUrl)}" />`,
+            `<meta name="twitter:player:stream:content_type" content="${escapeHtml(resolved.mimeType)}" />`,
+          ]
+        : []),
+      `<meta property="og:site_name" content="${escapeHtml(siteName)}" />`,
       `<meta property="og:type" content="video.other" />`,
       `<meta property="og:title" content="${escapeHtml(resolved.title)}" />`,
       ...(resolved.description
         ? [`<meta property="og:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
       `<meta property="og:url" content="${escapeHtml(pageUrl)}" />`,
+      `<meta property="og:image" content="${escapeHtml(posterUrl)}" />`,
+      `<meta property="og:image:url" content="${escapeHtml(posterUrl)}" />`,
+      `<meta property="og:image:secure_url" content="${escapeHtml(posterUrl)}" />`,
+      `<meta property="og:image:type" content="image/jpeg" />`,
+      ...(isDefaultPoster
+        ? [
+            `<meta property="og:image:width" content="1376" />`,
+            `<meta property="og:image:height" content="768" />`,
+          ]
+        : []),
       `<meta property="og:video" content="${escapeHtml(secureVideoUrl)}" />`,
       `<meta property="og:video:url" content="${escapeHtml(secureVideoUrl)}" />`,
       `<meta property="og:video:secure_url" content="${escapeHtml(secureVideoUrl)}" />`,
       `<meta property="og:video:type" content="${escapeHtml(resolved.mimeType)}" />`,
-      ...(width > 0 ? [`<meta property="og:video:width" content="${width}" />`] : []),
-      ...(height > 0 ? [`<meta property="og:video:height" content="${height}" />`] : []),
+      `<meta property="og:video:width" content="${effectiveWidth}" />`,
+      `<meta property="og:video:height" content="${effectiveHeight}" />`,
       `<link rel="alternate" type="application/json+oembed" href="${escapeHtml(oembedUrl)}" title="${escapeHtml(resolved.title)}" />`
     );
   } else {
-    // Video unavailable: do NOT emit thumbnail/summary_large_image fallbacks
     metaLines.push(
+      `<meta property="og:site_name" content="${escapeHtml(siteName)}" />`,
       `<meta property="og:type" content="website" />`,
       `<meta property="og:title" content="${escapeHtml(resolved.title)}" />`,
       ...(resolved.description
         ? [`<meta property="og:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
       `<meta property="og:url" content="${escapeHtml(pageUrl)}" />`,
+      `<meta property="og:image" content="${escapeHtml(posterUrl)}" />`,
+      `<meta property="og:image:secure_url" content="${escapeHtml(posterUrl)}" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
       `<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`,
       ...(resolved.description
         ? [`<meta name="twitter:description" content="${escapeHtml(resolved.description)}" />`]
-        : [])
+        : []),
+      `<meta name="twitter:image" content="${escapeHtml(posterUrl)}" />`
     );
   }
 
-  const hasDims = width >= 160 && height >= 90;
   const orientation =
-    width > height ? 'Landscape' : height > width ? 'Portrait' : width > 0 ? 'Square' : 'Unknown';
+    effectiveWidth > effectiveHeight
+      ? 'Landscape'
+      : effectiveHeight > effectiveWidth
+        ? 'Portrait'
+        : effectiveWidth > 0
+          ? 'Square'
+          : 'Unknown';
 
   const checks: MetadataValidationCheck[] = [
     {
@@ -342,11 +388,17 @@ export function buildSocialMetadata(
     },
     {
       id: 'card_type',
-      label: 'X (Twitter) Player Card Tags',
+      label: 'X & OpenGraph Video Card Tags',
       passed: hasValidVideo,
       detail: hasValidVideo
-        ? 'twitter:card="player" + twitter:player:stream emitted (no thumbnail/image fallback tags).'
-        : 'Omitted player card tags because the configured video stream is missing or invalid.',
+        ? `twitter:card="${effectiveCardType}" + twitter:image + og:image + og:video emitted`
+        : 'Video stream missing or invalid; summary_large_image fallback emitted.',
+    },
+    {
+      id: 'poster_image',
+      label: 'Social Poster / Thumbnail Image',
+      passed: Boolean(posterUrl),
+      detail: posterUrl,
     },
     {
       id: 'player_https',
@@ -357,10 +409,12 @@ export function buildSocialMetadata(
     {
       id: 'dimensions',
       label: 'Original Video Aspect Ratio & Dimensions',
-      passed: hasDims,
-      detail: hasDims
-        ? `${width} × ${height} px (${orientation})`
-        : 'Video dimensions not yet detected — click "Validate & Read Dimensions" to read exact metadata.',
+      passed: hasDetectedDims,
+      detail: hasDetectedDims
+        ? `${detectedWidth} × ${detectedHeight} px (${orientation})`
+        : hasValidVideo
+          ? `Using ${effectiveWidth}×${effectiveHeight} fallback — click "Verify Stream" to read exact container dimensions.`
+          : 'Dimensions unavailable without a valid video stream.',
     },
     {
       id: 'source_attribution',
@@ -378,18 +432,25 @@ export function buildSocialMetadata(
     description: resolved.description,
     url: pageUrl,
     ogType: hasValidVideo ? 'video.other' : 'website',
+    ogImage: posterUrl,
+    ogImageUrl: posterUrl,
+    ogImageSecureUrl: posterUrl,
+    ogImageType: 'image/jpeg',
+    ogImageWidth: isDefaultPoster ? 1376 : undefined,
+    ogImageHeight: isDefaultPoster ? 768 : undefined,
     ogVideo: hasValidVideo ? secureVideoUrl : '',
     ogVideoUrl: hasValidVideo ? secureVideoUrl : '',
     ogVideoSecureUrl: hasValidVideo ? secureVideoUrl : '',
     ogVideoType: hasValidVideo ? resolved.mimeType : '',
-    ogVideoWidth: width,
-    ogVideoHeight: height,
+    ogVideoWidth: effectiveWidth,
+    ogVideoHeight: effectiveHeight,
     twitterCard: effectiveCardType,
     twitterTitle: resolved.title,
     twitterDescription: resolved.description,
+    twitterImage: posterUrl,
     twitterPlayer: hasValidVideo ? playerUrl : '',
-    twitterPlayerWidth: width,
-    twitterPlayerHeight: height,
+    twitterPlayerWidth: effectiveWidth,
+    twitterPlayerHeight: effectiveHeight,
     twitterPlayerStream: hasValidVideo ? secureVideoUrl : '',
     twitterPlayerStreamContentType: hasValidVideo ? resolved.mimeType : '',
     sourceUrl: resolved.sourceUrl,
@@ -423,6 +484,7 @@ export function renderLandingBodySnapshot(
   const safeTitle = escapeHtml(meta.title);
   const safeDesc = escapeHtml(meta.description);
   const safeVideo = escapeHtml(meta.ogVideo);
+  const safePoster = escapeHtml(meta.ogImage || resolvePosterAccessUrl(link, origin));
   const safeMime = escapeHtml(meta.ogVideoType || 'video/mp4');
   const aspectCss =
     meta.ogVideoWidth > 0 && meta.ogVideoHeight > 0
@@ -433,7 +495,7 @@ export function renderLandingBodySnapshot(
       ${
         meta.hasValidVideo && safeVideo
           ? `<div style="background:#000;display:flex;justify-content:center;align-items:center;">
-              <video autoplay muted playsinline preload="auto" style="width:100%;max-height:75vh;aspect-ratio:${aspectCss};object-fit:contain;display:block;background:#000;">
+              <video controls autoplay muted playsinline loop preload="auto" poster="${safePoster}" style="width:100%;max-height:75vh;aspect-ratio:${aspectCss};object-fit:contain;display:block;background:#000;">
                 <source src="${safeVideo}" type="${safeMime}" />
               </video>
             </div>
@@ -527,8 +589,10 @@ export function renderPlayerPageHtml(
 ): string {
   const { safeOrigin } = normalizeOrigin(origin);
   const resolved = resolveEffectiveVideo(link, safeOrigin, globalConfig);
+  const posterUrl = resolvePosterAccessUrl(link, safeOrigin);
   const title = escapeHtml(resolved.title);
   const videoUrl = escapeHtml(resolved.videoUrl);
+  const safePoster = escapeHtml(posterUrl);
   const mime = escapeHtml(resolved.mimeType || 'video/mp4');
   const hasVideo = resolved.hasValidVideo && Boolean(resolved.videoUrl);
   const errorMsg = escapeHtml(
@@ -546,7 +610,9 @@ export function renderPlayerPageHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="clckd" content="a6c0dfb12e845a3e3e7915edcbcde473" />
     <title>${title}</title>
-    <meta name="robots" content="noindex" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:image" content="${safePoster}" />
+    <meta name="twitter:image" content="${safePoster}" />
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
@@ -599,9 +665,6 @@ export function renderPlayerPageHtml(
         border-radius: 0;
         outline: none;
       }
-      video::-webkit-media-controls {
-        display: none !important;
-      }
       .error-state {
         display: none;
         flex-direction: column;
@@ -641,7 +704,7 @@ export function renderPlayerPageHtml(
         ${
           hasVideo
             ? `<div class="video-aspect" id="nl-video-wrap">
-                <video id="nl-player" autoplay muted playsinline preload="auto" aria-label="${title}">
+                <video id="nl-player" controls autoplay muted playsinline loop preload="auto" poster="${safePoster}" aria-label="${title}">
                   <source id="nl-source" src="${videoUrl}" type="${mime}" />
                 </video>
               </div>`
@@ -673,7 +736,6 @@ export function renderPlayerPageHtml(
         }
 
         if (video) {
-          video.controls = false;
           video.muted = true;
           video.playsInline = true;
           video.addEventListener('loadedmetadata', function () {

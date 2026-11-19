@@ -106,6 +106,12 @@ export interface SocialMetadataPreview {
   description: string;
   url: string;
   ogType: string;
+  ogImage?: string;
+  ogImageUrl?: string;
+  ogImageSecureUrl?: string;
+  ogImageType?: string;
+  ogImageWidth?: number;
+  ogImageHeight?: number;
   ogVideo: string;
   ogVideoUrl: string;
   ogVideoSecureUrl: string;
@@ -115,6 +121,7 @@ export interface SocialMetadataPreview {
   twitterCard: string;
   twitterTitle: string;
   twitterDescription: string;
+  twitterImage?: string;
   twitterPlayer: string;
   twitterPlayerWidth: number;
   twitterPlayerHeight: number;

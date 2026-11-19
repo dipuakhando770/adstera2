@@ -225,7 +225,7 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     updatedAt: new Date().toISOString(),
   };
 
-  it('generates X Player Card & OpenGraph video tags with ZERO og:image, twitter:image, or summary_large_image tags', () => {
+  it('generates X Player Card & OpenGraph video tags with required twitter:image and og:image poster tags', () => {
     const meta = buildSocialMetadata(sampleLink, 'https://nasirlink.com', '/s/demo-card');
     const baseHtml = '<!doctype html><html><head><title>Placeholder</title></head><body></body></html>';
     const rendered = injectVideoMetaIntoHtml(baseHtml, meta);
@@ -233,19 +233,20 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(rendered.match(/<meta name="twitter:card"/g)?.length).toBe(1);
     expect(rendered).toContain('<meta name="twitter:card" content="player" />');
     expect(rendered).toContain('<meta name="twitter:title" content="Launch Demo Video" />');
+    expect(rendered).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
     expect(rendered).toContain('<meta name="twitter:player" content="https://nasirlink.com/embed/demo-card" />');
     expect(rendered).toContain('<meta name="twitter:player:width" content="1290" />');
     expect(rendered).toContain('<meta name="twitter:player:height" content="720" />');
     expect(rendered).toContain('<meta name="twitter:player:stream" content="https://imgbb.space/streams/launch.mp4" />');
     expect(rendered).toContain('<meta name="twitter:player:stream:content_type" content="video/mp4" />');
     expect(rendered).toContain('<meta property="og:type" content="video.other" />');
+    expect(rendered).toContain('<meta property="og:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
+    expect(rendered).toContain('<meta property="og:image:secure_url" content="https://nasirlink.com/poster/demo-card.jpg" />');
     expect(rendered).toContain('<meta property="og:video" content="https://imgbb.space/streams/launch.mp4" />');
     expect(rendered).toContain('<meta property="og:video:type" content="video/mp4" />');
     expect(rendered).toContain('<meta property="og:video:width" content="1290" />');
     expect(rendered).toContain('<meta property="og:video:height" content="720" />');
     expect(rendered).toContain('<meta property="og:url" content="https://nasirlink.com/s/demo-card" />');
-    expect(rendered).not.toContain('og:image');
-    expect(rendered).not.toContain('twitter:image');
     expect(rendered).not.toContain('summary_large_image');
     expect(rendered).not.toContain('ANH_CUA_BAN');
     expect(rendered).not.toContain('imgur-embed-pub');
@@ -279,7 +280,7 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(squareMeta.renderedMetaHtml).toContain('<meta name="twitter:player:height" content="1080" />');
   });
 
-  it('reports an explicit error instead of silently emitting a thumbnail or sample video fallback when videoUrl is missing', () => {
+  it('reports an explicit error and falls back cleanly to summary_large_image card without sample video fallback when videoUrl is missing', () => {
     const brokenMeta = buildSocialMetadata(
       {
         ...sampleLink,
@@ -294,8 +295,9 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(brokenMeta.videoError).toBeTruthy();
     expect(brokenMeta.ogVideo).toBe('');
     expect(brokenMeta.renderedMetaHtml).not.toContain('showcase.mp4');
-    expect(brokenMeta.renderedMetaHtml).not.toContain('summary_large_image');
-    expect(brokenMeta.renderedMetaHtml).not.toContain('twitter:image');
+    expect(brokenMeta.renderedMetaHtml).toContain('<meta name="twitter:card" content="summary_large_image" />');
+    expect(brokenMeta.renderedMetaHtml).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
+    expect(brokenMeta.renderedMetaHtml).toContain('<meta property="og:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
 
     const errorEmbedHtml = renderPlayerPageHtml(
       { ...sampleLink, videoUrl: null },
@@ -333,7 +335,7 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(meta.sourceUrl).toBe('https://imgbb.space/example');
   });
 
-  it('renders clean /embed/:slug HTML5 player with autoplay/muted/playsinline/contain, ZERO controls/posters/borders, and real From domain link', () => {
+  it('renders /embed/:slug HTML5 player with controls, poster, loop, autoplay/muted/playsinline/contain, aspect ratio, and real From domain link', () => {
     const portraitLink: LinkRecord = {
       ...sampleLink,
       videoUrl: 'https://imgbb.space/vertical/clip.mp4?token=secret',
@@ -341,15 +343,14 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
       videoHeight: 1278,
     };
     const html = renderPlayerPageHtml(portraitLink, 'https://nasirlink.com');
-    expect(html).toContain('autoplay muted playsinline preload="auto"');
+    expect(html).toContain('controls autoplay muted playsinline loop preload="auto"');
+    expect(html).toContain('poster="https://nasirlink.com/poster/demo-card.jpg"');
     expect(html).toContain('object-fit: contain');
     expect(html).toContain('aspect-ratio: 720 / 1278');
     expect(html).toContain('border: none');
     expect(html).toContain('border-radius: 0');
     expect(html).toContain('href="https://imgbb.space/vertical/clip.mp4"');
     expect(html).toContain('>From imgbb.space</a>');
-    expect(html).not.toMatch(/<video[^>]*\bcontrols\b/i);
-    expect(html).not.toContain('poster=');
     expect(html).not.toContain('nl-btn-play');
     expect(html).not.toContain('nl-btn-pause');
     expect(html).not.toContain('nl-btn-stop');
@@ -468,16 +469,36 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     expect(botRes.status).toBe(200);
     const botHtml = await botRes.text();
     expect(botHtml).toContain('<meta name="twitter:card" content="player" />');
-    expect(botHtml).not.toContain('twitter:image');
-    expect(botHtml).not.toContain('og:image');
+    expect(botHtml).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/portrait720.jpg" />');
+    expect(botHtml).toContain('<meta property="og:image" content="https://nasirlink.com/poster/portrait720.jpg" />');
     expect(browserRes.status).toBe(302);
     expect(browserRes.headers.get('location')).toContain('https://example.com/my-destination');
 
-    // /s/:slug serves X Player Card metadata with exact portrait dims and zero thumbnail fallback
+    // /poster/:slug.jpg always returns 200 OK even when thumbnailUrl is null
+    const posterRes = await worker.fetch(new Request('https://nasirlink.com/poster/portrait720.jpg'), env);
+    expect(posterRes.status).toBe(200);
+    expect(posterRes.headers.get('content-type')).toBe('image/jpeg');
+    expect(posterRes.headers.get('access-control-allow-origin')).toBe('*');
+
+    // /s/:slug serves clean static X Player Card HTML for social crawlers and hydrated HTML for browsers
+    const botShareRes = await worker.fetch(
+      new Request('https://nasirlink.com/s/portrait720', {
+        headers: { 'User-Agent': 'Twitterbot/1.0' },
+      }),
+      env
+    );
+    expect(botShareRes.status).toBe(200);
+    const botShareHtml = await botShareRes.text();
+    expect(botShareHtml).toContain('<meta name="twitter:card" content="player" />');
+    expect(botShareHtml).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/portrait720.jpg" />');
+    expect(botShareHtml).not.toContain('id="root"');
+
     const socialShareRes = await worker.fetch(new Request('https://nasirlink.com/s/portrait720'), env);
     expect(socialShareRes.status).toBe(200);
     const socialShareHtml = await socialShareRes.text();
     expect(socialShareHtml).toContain('<meta name="twitter:card" content="player" />');
+    expect(socialShareHtml).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/portrait720.jpg" />');
+    expect(socialShareHtml).toContain('<meta property="og:image" content="https://nasirlink.com/poster/portrait720.jpg" />');
     expect(socialShareHtml).toContain('<meta name="twitter:player" content="https://nasirlink.com/embed/portrait720" />');
     expect(socialShareHtml).toContain('<meta name="twitter:player:width" content="720" />');
     expect(socialShareHtml).toContain('<meta name="twitter:player:height" content="1278" />');
@@ -488,16 +509,17 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     expect(directRedirectRes.status).toBe(302);
     expect(directRedirectRes.headers.get('location')).toContain('https://example.com/my-destination');
 
-    // /embed/:slug page check (frameable, clean player, aspect ratio preserved, From domain link)
+    // /embed/:slug page check (frameable, player with controls+poster+loop, aspect ratio preserved, From domain link)
     const embedRes = await worker.fetch(new Request('https://nasirlink.com/embed/portrait720'), env);
     expect(embedRes.status).toBe(200);
     expect(embedRes.headers.get('content-security-policy')).toContain('frame-ancestors *');
     expect(embedRes.headers.get('x-frame-options')).toBeNull();
     const embedHtml = await embedRes.text();
     expect(embedHtml).toContain('https://video.twimg.com/amplify_video/2122735467695353856/vid/avc1/720x1278/5kKXcgJKfyoEYzwe.mp4');
+    expect(embedHtml).toContain('controls autoplay muted playsinline loop preload="auto"');
+    expect(embedHtml).toContain('poster="https://nasirlink.com/poster/portrait720.jpg"');
     expect(embedHtml).toContain('aspect-ratio: 720 / 1278');
     expect(embedHtml).toContain('>From video.twimg.com</a>');
-    expect(embedHtml).not.toMatch(/<video[^>]*\bcontrols\b/i);
     expect(embedHtml).not.toContain('nl-btn-play');
 
     // /player/:slug remains compatible and serves the same clean embed

@@ -149,7 +149,7 @@ async function fetchWithSafeRedirects(
 }
 
 const SOCIAL_CRAWLER_UA_REGEX =
-  /(twitterbot|xbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|discordbot|telegrambot|whatsapp|slackbot|linkedinbot|pinterest|applebot|embedly|redditbot|skypeuripreview|vkshare|iframely|quora link preview|mastodon|misskey|line-poker|kakaotalk-scrap|viber|snapchat|googlebot|bingbot|crawler|spider|preview|unfurl|curl|wget)/i;
+  /(twitterbot|xbot|x-card|twitter-card|cardvalidator|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|discordbot|telegrambot|whatsapp|slackbot|linkedinbot|pinterest|applebot|embedly|redditbot|skypeuripreview|skype|threads|bluesky|vkshare|iframely|quora link preview|mastodon|misskey|line-poker|kakaotalk-scrap|viber|snapchat|googlebot|bingbot|crawler|spider|preview|unfurl|curl|wget)/i;
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -1265,34 +1265,72 @@ export default {
       const slug = rawSlug.replace(/\.(jpg|jpeg|png|webp)$/i, '');
       const found = await getLinkBySlug(env, slug);
       if (!found) return new Response('Poster not found', { status: 404 });
+      if (!found.link.isActive) return new Response('Poster unavailable', { status: 410 });
       const thumb = (found.link.thumbnailUrl || '').trim();
-      if (!found.link.isActive || !thumb) return new Response('Poster unavailable', { status: 404 });
 
-      const dataMatch = thumb.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
-      if (dataMatch) {
-        const mime = dataMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataMatch[1].toLowerCase();
-        const binary = atob(dataMatch[2]);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return new Response(method === 'HEAD' ? null : bytes, {
-          status: 200,
-          headers: {
-            'Content-Type': mime,
-            'Content-Length': String(bytes.length),
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=86400',
-          },
-        });
+      if (thumb) {
+        const dataMatch = thumb.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
+        if (dataMatch) {
+          const mime = dataMatch[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : dataMatch[1].toLowerCase();
+          const binary = atob(dataMatch[2]);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          return new Response(method === 'HEAD' ? null : bytes, {
+            status: 200,
+            headers: {
+              'Content-Type': mime,
+              'Content-Length': String(bytes.length),
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=86400',
+            },
+          });
+        }
+
+        if ((thumb.startsWith('/src/assets/') || thumb.startsWith('/samples/')) && env.ASSETS) {
+          const assetPath = thumb.includes('edge_network')
+            ? '/samples/edge-poster.jpg'
+            : thumb.includes('showcase')
+              ? '/samples/default-poster.jpg'
+              : thumb;
+          const assetRes = await env.ASSETS.fetch(new Request(new URL(assetPath, request.url), { method }));
+          if (assetRes.ok) {
+            const headers = new Headers(assetRes.headers);
+            headers.set('Content-Type', 'image/jpeg');
+            headers.set('Access-Control-Allow-Origin', '*');
+            headers.set('Cache-Control', 'public, max-age=86400');
+            return new Response(method === 'HEAD' ? null : assetRes.body, {
+              status: 200,
+              headers,
+            });
+          }
+        }
+
+        if (/^https?:\/\//i.test(thumb)) {
+          const safeThumb = validateSafeExternalUrl(thumb, false, false);
+          if (!safeThumb.valid || !safeThumb.normalizedUrl) {
+            return new Response('Invalid poster URL', { status: 400 });
+          }
+          return Response.redirect(safeThumb.normalizedUrl, 302);
+        }
       }
 
-      if (thumb.startsWith('/') && env.ASSETS) {
-        return env.ASSETS.fetch(new Request(new URL(thumb, request.url), { method }));
+      const fallbackPath = (found.link.videoUrl || '').includes('showcase1.mp4')
+        ? '/samples/edge-poster.jpg'
+        : '/samples/default-poster.jpg';
+      if (env.ASSETS) {
+        const assetRes = await env.ASSETS.fetch(new Request(new URL(fallbackPath, request.url), { method }));
+        if (assetRes.ok) {
+          const headers = new Headers(assetRes.headers);
+          headers.set('Content-Type', 'image/jpeg');
+          headers.set('Access-Control-Allow-Origin', '*');
+          headers.set('Cache-Control', 'public, max-age=86400');
+          return new Response(method === 'HEAD' ? null : assetRes.body, {
+            status: 200,
+            headers,
+          });
+        }
       }
-      const safeThumb = validateSafeExternalUrl(thumb, false, false);
-      if (!safeThumb.valid || !safeThumb.normalizedUrl) {
-        return new Response('Invalid poster URL', { status: 400 });
-      }
-      return Response.redirect(safeThumb.normalizedUrl, 302);
+      return new Response('Default poster unavailable', { status: 404 });
     }
 
     // 4. First-party Video Access URL (/media/:slug, /media/:slug.mp4, /media/:slug.webm)
@@ -1411,6 +1449,15 @@ export default {
       const slug = decodeURIComponent(pathname.slice(prefix.length)).split('/')[0] || '';
       const found = await getLinkBySlug(env, slug);
       if (found) {
+        const ua = request.headers.get('user-agent') || '';
+        const isExpired = found.link.expiresAt ? new Date(found.link.expiresAt).getTime() < Date.now() : false;
+        const isCrawler = SOCIAL_CRAWLER_UA_REGEX.test(ua) && url.searchParams.get('preview') !== '1';
+        if (isCrawler && found.link.isActive && !isExpired) {
+          const settings = await getSystemSettings(env);
+          const crawlerHtml = renderSocialCrawlerHtml(found.link, origin, pathname, settings);
+          const res = htmlResponse(crawlerHtml, 200, false);
+          return method === 'HEAD' ? new Response(null, { status: res.status, headers: res.headers }) : res;
+        }
         const res = await renderSpaWithMeta(request, env, found.link, pathname);
         return method === 'HEAD' ? new Response(null, { status: res.status, headers: res.headers }) : res;
       }
@@ -1428,6 +1475,15 @@ export default {
       }
       const { link } = found;
       if (isSocial) {
+        const ua = request.headers.get('user-agent') || '';
+        const isExpired = link.expiresAt ? new Date(link.expiresAt).getTime() < Date.now() : false;
+        const isCrawler = SOCIAL_CRAWLER_UA_REGEX.test(ua) && url.searchParams.get('preview') !== '1';
+        if (isCrawler && link.isActive && !isExpired) {
+          const settings = await getSystemSettings(env);
+          const crawlerHtml = renderSocialCrawlerHtml(link, origin, pathname, settings);
+          const res = htmlResponse(crawlerHtml, 200, false);
+          return method === 'HEAD' ? new Response(null, { status: res.status, headers: res.headers }) : res;
+        }
         const res = await renderSpaWithMeta(request, env, link, pathname);
         return method === 'HEAD' ? new Response(null, { status: res.status, headers: res.headers }) : res;
       } else {
@@ -2183,17 +2239,49 @@ async function handleApiRequest(
 
     let videoUrl = cur.videoUrl;
     let videoMimeType = cur.videoMimeType;
+    let videoUrlChanged = false;
     if (data.videoUrl !== undefined) {
       if (data.videoUrl && data.videoUrl.trim()) {
         const vCheck = validateVideoUrl(data.videoUrl);
         if (!vCheck.valid || !vCheck.normalizedUrl) {
           return jsonResponse({ error: vCheck.error || 'Invalid video URL.' }, 400);
         }
+        videoUrlChanged = vCheck.normalizedUrl !== videoUrl;
         videoUrl = vCheck.normalizedUrl;
         videoMimeType = vCheck.mimeType || 'video/mp4';
       } else {
+        videoUrlChanged = videoUrl !== null;
         videoUrl = null;
         videoMimeType = null;
+      }
+    }
+
+    let resolvedWidth =
+      data.videoWidth !== undefined
+        ? Number(data.videoWidth || 0)
+        : videoUrlChanged
+          ? 0
+          : cur.videoWidth;
+    let resolvedHeight =
+      data.videoHeight !== undefined
+        ? Number(data.videoHeight || 0)
+        : videoUrlChanged
+          ? 0
+          : cur.videoHeight;
+
+    if (videoUrl && (resolvedWidth <= 0 || resolvedHeight <= 0)) {
+      const urlDims = resolveVideoDimensions(videoUrl, null, null);
+      resolvedWidth = urlDims.width;
+      resolvedHeight = urlDims.height;
+      if (resolvedWidth <= 0 || resolvedHeight <= 0) {
+        const probe = await probeVideoStream(videoUrl, {
+          origin,
+          localReader: createWorkerLocalReader(env, request.url),
+        });
+        if (probe.audit.detectedWidth && probe.audit.detectedHeight) {
+          resolvedWidth = probe.audit.detectedWidth;
+          resolvedHeight = probe.audit.detectedHeight;
+        }
       }
     }
 
@@ -2241,8 +2329,8 @@ async function handleApiRequest(
       videoDescription: data.videoDescription !== undefined ? data.videoDescription?.trim() || null : cur.videoDescription,
       thumbnailUrl,
       videoMimeType,
-      videoWidth: data.videoWidth ?? cur.videoWidth,
-      videoHeight: data.videoHeight ?? cur.videoHeight,
+      videoWidth: resolvedWidth,
+      videoHeight: resolvedHeight,
       twitterCardType: data.twitterCardType ?? cur.twitterCardType,
       playerUrl,
       redirectType: (data.redirectType ?? cur.redirectType) as RedirectStatusCode,
@@ -2701,15 +2789,18 @@ async function handleApiRequest(
       if (!env.DB) {
         const target = memStore.links.find((l) => l.id === id);
         if (!target) return jsonResponse({ error: 'Link not found.' }, 404);
+        let videoUrlChanged = false;
         if (data.videoUrl !== undefined) {
           if (data.videoUrl && data.videoUrl.trim()) {
             const vCheck = validateVideoUrl(data.videoUrl);
             if (!vCheck.valid || !vCheck.normalizedUrl) {
               return jsonResponse({ error: vCheck.error || 'Invalid video URL.' }, 400);
             }
+            videoUrlChanged = vCheck.normalizedUrl !== target.videoUrl;
             target.videoUrl = vCheck.normalizedUrl;
             target.videoMimeType = vCheck.mimeType || 'video/mp4';
           } else {
+            videoUrlChanged = target.videoUrl !== null;
             target.videoUrl = null;
             target.videoMimeType = null;
           }
@@ -2733,7 +2824,25 @@ async function handleApiRequest(
         if (data.videoTitle !== undefined) target.videoTitle = data.videoTitle?.trim() || null;
         if (data.videoDescription !== undefined) target.videoDescription = data.videoDescription?.trim() || null;
         if (data.videoWidth !== undefined) target.videoWidth = data.videoWidth ?? 0;
+        else if (videoUrlChanged) target.videoWidth = 0;
         if (data.videoHeight !== undefined) target.videoHeight = data.videoHeight ?? 0;
+        else if (videoUrlChanged) target.videoHeight = 0;
+        if (target.videoUrl && (target.videoWidth <= 0 || target.videoHeight <= 0)) {
+          const urlDims = resolveVideoDimensions(target.videoUrl, null, null);
+          if (urlDims.width > 0 && urlDims.height > 0) {
+            target.videoWidth = urlDims.width;
+            target.videoHeight = urlDims.height;
+          } else {
+            const probe = await probeVideoStream(target.videoUrl, {
+              origin,
+              localReader: createWorkerLocalReader(env, request.url),
+            });
+            if (probe.audit.detectedWidth && probe.audit.detectedHeight) {
+              target.videoWidth = probe.audit.detectedWidth;
+              target.videoHeight = probe.audit.detectedHeight;
+            }
+          }
+        }
         if (data.twitterCardType !== undefined) target.twitterCardType = data.twitterCardType;
         target.updatedAt = new Date().toISOString();
         return jsonResponse({ link: toPublicLink(target) });
@@ -2744,17 +2853,49 @@ async function handleApiRequest(
 
       let videoUrl = row.video_url ? String(row.video_url) : null;
       let videoMimeType = row.video_mime_type ? String(row.video_mime_type) : null;
+      let videoUrlChanged = false;
       if (data.videoUrl !== undefined) {
         if (data.videoUrl && data.videoUrl.trim()) {
           const vCheck = validateVideoUrl(data.videoUrl);
           if (!vCheck.valid || !vCheck.normalizedUrl) {
             return jsonResponse({ error: vCheck.error || 'Invalid video URL.' }, 400);
           }
+          videoUrlChanged = vCheck.normalizedUrl !== videoUrl;
           videoUrl = vCheck.normalizedUrl;
           videoMimeType = vCheck.mimeType || 'video/mp4';
         } else {
+          videoUrlChanged = videoUrl !== null;
           videoUrl = null;
           videoMimeType = null;
+        }
+      }
+
+      let resolvedWidth =
+        data.videoWidth !== undefined
+          ? Number(data.videoWidth || 0)
+          : videoUrlChanged
+            ? 0
+            : Number(row.video_width || 0);
+      let resolvedHeight =
+        data.videoHeight !== undefined
+          ? Number(data.videoHeight || 0)
+          : videoUrlChanged
+            ? 0
+            : Number(row.video_height || 0);
+
+      if (videoUrl && (resolvedWidth <= 0 || resolvedHeight <= 0)) {
+        const urlDims = resolveVideoDimensions(videoUrl, null, null);
+        resolvedWidth = urlDims.width;
+        resolvedHeight = urlDims.height;
+        if (resolvedWidth <= 0 || resolvedHeight <= 0) {
+          const probe = await probeVideoStream(videoUrl, {
+            origin,
+            localReader: createWorkerLocalReader(env, request.url),
+          });
+          if (probe.audit.detectedWidth && probe.audit.detectedHeight) {
+            resolvedWidth = probe.audit.detectedWidth;
+            resolvedHeight = probe.audit.detectedHeight;
+          }
         }
       }
 
@@ -2805,8 +2946,8 @@ async function handleApiRequest(
           thumbnailUrl,
           data.videoTitle !== undefined ? data.videoTitle?.trim() || null : strOrNull(row.video_title),
           data.videoDescription !== undefined ? data.videoDescription?.trim() || null : strOrNull(row.video_description),
-          Number(data.videoWidth ?? row.video_width ?? 0),
-          Number(data.videoHeight ?? row.video_height ?? 0),
+          resolvedWidth,
+          resolvedHeight,
           String(data.twitterCardType ?? row.twitter_card_type ?? 'player'),
           new Date().toISOString(),
           id

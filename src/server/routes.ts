@@ -864,6 +864,7 @@ export function createApiRouter(): express.Router {
 
     let videoUrl = existing.video_url ? String(existing.video_url) : null;
     let videoMimeType = existing.video_mime_type ? String(existing.video_mime_type) : null;
+    let videoUrlChanged = false;
 
     if (data.videoUrl !== undefined) {
       if (data.videoUrl && data.videoUrl.trim()) {
@@ -872,11 +873,42 @@ export function createApiRouter(): express.Router {
           res.status(400).json({ error: vCheck.error || 'Invalid video URL.' });
           return;
         }
+        videoUrlChanged = vCheck.normalizedUrl !== videoUrl;
         videoUrl = vCheck.normalizedUrl;
         videoMimeType = vCheck.mimeType || 'video/mp4';
       } else {
+        videoUrlChanged = videoUrl !== null;
         videoUrl = null;
         videoMimeType = null;
+      }
+    }
+
+    let resolvedWidth =
+      data.videoWidth !== undefined
+        ? Number(data.videoWidth || 0)
+        : videoUrlChanged
+          ? 0
+          : Number(existing.video_width || 0);
+    let resolvedHeight =
+      data.videoHeight !== undefined
+        ? Number(data.videoHeight || 0)
+        : videoUrlChanged
+          ? 0
+          : Number(existing.video_height || 0);
+
+    if (videoUrl && (resolvedWidth <= 0 || resolvedHeight <= 0)) {
+      const urlDims = resolveVideoDimensions(videoUrl, null, null);
+      resolvedWidth = urlDims.width;
+      resolvedHeight = urlDims.height;
+      if (resolvedWidth <= 0 || resolvedHeight <= 0) {
+        const probe = await probeVideoStream(videoUrl, {
+          origin: getRequestOrigin(req),
+          localReader: localSampleReader,
+        });
+        if (probe.audit.detectedWidth && probe.audit.detectedHeight) {
+          resolvedWidth = probe.audit.detectedWidth;
+          resolvedHeight = probe.audit.detectedHeight;
+        }
       }
     }
 
@@ -956,8 +988,8 @@ export function createApiRouter(): express.Router {
       data.videoDescription !== undefined ? data.videoDescription?.trim() || null : strOrNull(existing.video_description),
       thumbnailUrl,
       videoMimeType,
-      Number(data.videoWidth ?? existing.video_width ?? 0),
-      Number(data.videoHeight ?? existing.video_height ?? 0),
+      resolvedWidth,
+      resolvedHeight,
       String(data.twitterCardType ?? existing.twitter_card_type ?? 'player'),
       playerUrl,
       Number(data.redirectType ?? existing.redirect_type ?? 302),
@@ -1423,6 +1455,7 @@ export function createApiRouter(): express.Router {
 
     let videoUrl = existing.video_url ? String(existing.video_url) : null;
     let videoMimeType = existing.video_mime_type ? String(existing.video_mime_type) : null;
+    let videoUrlChanged = false;
     if (data.videoUrl !== undefined) {
       if (data.videoUrl && data.videoUrl.trim()) {
         const vCheck = validateVideoUrl(data.videoUrl);
@@ -1430,11 +1463,42 @@ export function createApiRouter(): express.Router {
           res.status(400).json({ error: vCheck.error || 'Invalid video URL.' });
           return;
         }
+        videoUrlChanged = vCheck.normalizedUrl !== videoUrl;
         videoUrl = vCheck.normalizedUrl;
         videoMimeType = vCheck.mimeType || 'video/mp4';
       } else {
+        videoUrlChanged = videoUrl !== null;
         videoUrl = null;
         videoMimeType = null;
+      }
+    }
+
+    let resolvedWidth =
+      data.videoWidth !== undefined
+        ? Number(data.videoWidth || 0)
+        : videoUrlChanged
+          ? 0
+          : Number(existing.video_width || 0);
+    let resolvedHeight =
+      data.videoHeight !== undefined
+        ? Number(data.videoHeight || 0)
+        : videoUrlChanged
+          ? 0
+          : Number(existing.video_height || 0);
+
+    if (videoUrl && (resolvedWidth <= 0 || resolvedHeight <= 0)) {
+      const urlDims = resolveVideoDimensions(videoUrl, null, null);
+      resolvedWidth = urlDims.width;
+      resolvedHeight = urlDims.height;
+      if (resolvedWidth <= 0 || resolvedHeight <= 0) {
+        const probe = await probeVideoStream(videoUrl, {
+          origin: getRequestOrigin(req),
+          localReader: localSampleReader,
+        });
+        if (probe.audit.detectedWidth && probe.audit.detectedHeight) {
+          resolvedWidth = probe.audit.detectedWidth;
+          resolvedHeight = probe.audit.detectedHeight;
+        }
       }
     }
 
@@ -1493,8 +1557,8 @@ export function createApiRouter(): express.Router {
       thumbnailUrl,
       data.videoTitle !== undefined ? data.videoTitle?.trim() || null : strOrNull(existing.video_title),
       data.videoDescription !== undefined ? data.videoDescription?.trim() || null : strOrNull(existing.video_description),
-      Number(data.videoWidth ?? existing.video_width ?? 0),
-      Number(data.videoHeight ?? existing.video_height ?? 0),
+      resolvedWidth,
+      resolvedHeight,
       String(data.twitterCardType ?? existing.twitter_card_type ?? 'player'),
       new Date().toISOString(),
       req.params.id

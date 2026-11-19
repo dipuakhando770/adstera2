@@ -23,6 +23,8 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
   const [previewEnabled, setPreviewEnabled] = useState(true);
   const [autoRedirectSeconds, setAutoRedirectSeconds] = useState(0);
   const [playerUrl, setPlayerUrl] = useState('');
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [twitterCardType, setTwitterCardType] = useState<'player' | 'summary_large_image'>('player');
   const [playerWidth, setPlayerWidth] = useState(0);
   const [playerHeight, setPlayerHeight] = useState(0);
   const [videoUrl, setVideoUrl] = useState('');
@@ -69,6 +71,8 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
         setPreviewEnabled(l.previewEnabled);
         setAutoRedirectSeconds(l.autoRedirectSeconds ?? 0);
         setPlayerUrl(l.playerUrl || '');
+        setThumbnailUrl(l.thumbnailUrl || '');
+        setTwitterCardType(l.twitterCardType || 'player');
         setPlayerWidth(l.videoWidth || meta?.twitterPlayerWidth || 0);
         setPlayerHeight(l.videoHeight || meta?.twitterPlayerHeight || 0);
         setVideoUrl(l.videoUrl || '');
@@ -103,12 +107,12 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
         body: JSON.stringify({
           previewEnabled,
           autoRedirectSeconds: Number(autoRedirectSeconds) || 0,
-          twitterCardType: 'player',
+          twitterCardType,
           playerUrl: playerUrl.trim() || null,
           videoWidth: playerWidth > 0 ? Number(playerWidth) : null,
           videoHeight: playerHeight > 0 ? Number(playerHeight) : null,
           videoUrl: videoUrl.trim(),
-          thumbnailUrl: null,
+          thumbnailUrl: thumbnailUrl.trim() || null,
           videoTitle: title.trim() || null,
           videoDescription: description.trim() || null,
         }),
@@ -216,6 +220,7 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3">
                 <VideoPlayer
                   src={metadata.ogVideo}
+                  poster={thumbnailUrl.trim() || metadata.ogImage || `/poster/${encodeURIComponent(selectedSlug)}.jpg`}
                   mimeType={metadata.ogVideoType}
                   title={livePreviewTitle}
                   width={metadata.twitterPlayerWidth || displayWidth}
@@ -438,6 +443,38 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
               />
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Poster / Thumbnail URL (twitter:image &amp; og:image)
+                </label>
+                <input
+                  type="text"
+                  value={thumbnailUrl}
+                  onChange={(e) => setThumbnailUrl(e.target.value)}
+                  placeholder={`${window.location.origin}/poster/${selectedSlug}.jpg`}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  X Card Type (twitter:card)
+                </label>
+                <select
+                  value={twitterCardType}
+                  onChange={(e) =>
+                    setTwitterCardType(
+                      e.target.value === 'summary_large_image' ? 'summary_large_image' : 'player'
+                    )
+                  }
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                >
+                  <option value="player">player</option>
+                  <option value="summary_large_image">summary_large_image</option>
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Video Title
@@ -468,9 +505,10 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
               </div>
               <pre className="rounded-lg bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 text-[11px] font-mono text-slate-700 dark:text-slate-300 overflow-x-auto leading-relaxed">
                 {[
-                  `<meta name="twitter:card" content="player" />`,
+                  `<meta name="twitter:card" content="${twitterCardType}" />`,
                   `<meta name="twitter:title" content="${livePreviewTitle}" />`,
                   `<meta name="twitter:description" content="${livePreviewDesc}" />`,
+                  `<meta name="twitter:image" content="${thumbnailUrl.trim() || metadata.twitterImage || `${window.location.origin}/poster/${selectedSlug}.jpg`}" />`,
                   `<meta name="twitter:player" content="${playerUrl.trim() || `${window.location.origin}/embed/${selectedSlug}`}" />`,
                   ...(displayWidth > 0 && displayHeight > 0
                     ? [
@@ -481,6 +519,7 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
                   `<meta name="twitter:player:stream" content="${videoUrl.trim() || metadata.twitterPlayerStream}" />`,
                   `<meta name="twitter:player:stream:content_type" content="${metadata.twitterPlayerStreamContentType || 'video/mp4'}" />`,
                   `<meta property="og:type" content="video.other" />`,
+                  `<meta property="og:image" content="${thumbnailUrl.trim() || metadata.ogImage || `${window.location.origin}/poster/${selectedSlug}.jpg`}" />`,
                   `<meta property="og:video" content="${videoUrl.trim() || metadata.ogVideo}" />`,
                 ].join('\n')}
               </pre>
