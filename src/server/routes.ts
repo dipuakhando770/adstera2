@@ -749,7 +749,7 @@ export function createApiRouter(): express.Router {
       }
     } else {
       // Guest workspace shows public/demo links + links created anonymously
-      conditions.push('(user_id IS NULL OR id LIKE "lnk_demo_%")');
+      conditions.push("(user_id IS NULL OR id LIKE 'lnk_demo_%')");
     }
 
     if (status === 'active') conditions.push('is_active = 1');
@@ -759,7 +759,7 @@ export function createApiRouter(): express.Router {
     else if (type === 'video') conditions.push("link_type = 'video'");
 
     if (q) {
-      conditions.push('(LOWER(slug) LIKE ? OR LOWER(destination_url) LIKE ? OR LOWER(COALESCE(video_title, "")) LIKE ?)');
+      conditions.push("(LOWER(slug) LIKE ? OR LOWER(destination_url) LIKE ? OR LOWER(COALESCE(video_title, '')) LIKE ?)");
       const like = `%${q}%`;
       params.push(like, like, like);
     }

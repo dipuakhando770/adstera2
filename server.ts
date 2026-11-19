@@ -70,12 +70,44 @@ async function fetchWithSafeRedirects(
   throw new Error('Too many redirects');
 }
 
+function parseServerArgs(): { port?: number; host?: string } {
+  const args = process.argv.slice(2);
+  let port: number | undefined;
+  let host: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--port' && args[i + 1]) {
+      const p = Number(args[++i]);
+      if (Number.isFinite(p) && p > 0) port = p;
+    } else if (arg.startsWith('--port=')) {
+      const p = Number(arg.slice('--port='.length));
+      if (Number.isFinite(p) && p > 0) port = p;
+    } else if (arg === '--host' && args[i + 1]) {
+      host = args[++i];
+    } else if (arg.startsWith('--host=')) {
+      host = arg.slice('--host='.length);
+    }
+  }
+  return { port, host };
+}
+
 async function startServer() {
   await seedDatabaseIfEmpty();
 
   const app = express();
-  const port = Number(process.env.PORT || 3000);
   const isProd = process.env.NODE_ENV === 'production';
+  const cli = parseServerArgs();
+  const envPort = Number(process.env.PORT || 0);
+  const nginxPort = Number(process.env.NGINX_PORT || 0);
+  const defaultAppPort = Number(process.env.DEFAULT_APP_PORT || 3000);
+  const resolvedEnvPort =
+    !isProd && envPort > 0 && nginxPort > 0 && envPort === nginxPort
+      ? defaultAppPort
+      : envPort > 0
+        ? envPort
+        : defaultAppPort;
+  const port = cli.port || resolvedEnvPort;
+  const host = cli.host || '0.0.0.0';
 
   app.set('trust proxy', true);
   app.use(express.json({ limit: '1mb' }));
@@ -669,8 +701,8 @@ const SOCIAL_CRAWLER_UA_REGEX =
     await renderSpaHtml(req, res);
   });
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`NasirLink server listening on http://0.0.0.0:${port}`);
+  app.listen(port, host, () => {
+    console.log(`NasirLink server listening on http://${host}:${port}`);
   });
 }
 
