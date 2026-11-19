@@ -187,8 +187,8 @@ export function resolveEffectiveVideo(
   const description = useGlobal
     ? globalConfig?.globalVideoDescription?.trim() ||
       link.videoDescription?.trim() ||
-      `${destDomain}.`
-    : link.videoDescription?.trim() || ` ${destDomain}.`;
+      `Watch video and continue to ${destDomain}.`
+    : link.videoDescription?.trim() || `Watch video and continue to ${destDomain}.`;
 
   if (!rawVideoUrl) {
     return {
