@@ -29,6 +29,7 @@ import {
   createLinkSchema,
   generateRandomSlug,
   loginSchema,
+  normalizeThumbnailUrl,
   qrRequestSchema,
   registerSchema,
   reportLinkSchema,
@@ -660,7 +661,8 @@ export function createApiRouter(): express.Router {
       }
 
       if (data.thumbnailUrl && data.thumbnailUrl.trim()) {
-        const thumbCheck = validateSafeExternalUrl(data.thumbnailUrl, true, true);
+        const thumbInput = normalizeThumbnailUrl(data.thumbnailUrl);
+        const thumbCheck = validateSafeExternalUrl(thumbInput, true, true);
         if (!thumbCheck.valid || !thumbCheck.normalizedUrl) {
           res.status(400).json({ error: thumbCheck.error || 'Invalid thumbnail URL.' });
           return;
@@ -915,7 +917,8 @@ export function createApiRouter(): express.Router {
     let thumbnailUrl = existing.thumbnail_url ? String(existing.thumbnail_url) : null;
     if (data.thumbnailUrl !== undefined) {
       if (data.thumbnailUrl && data.thumbnailUrl.trim()) {
-        const tCheck = validateSafeExternalUrl(data.thumbnailUrl, true, true);
+        const thumbInput = normalizeThumbnailUrl(data.thumbnailUrl);
+        const tCheck = validateSafeExternalUrl(thumbInput, true, true);
         if (!tCheck.valid || !tCheck.normalizedUrl) {
           res.status(400).json({ error: tCheck.error || 'Invalid thumbnail URL.' });
           return;
@@ -1505,7 +1508,8 @@ export function createApiRouter(): express.Router {
     let thumbnailUrl = existing.thumbnail_url ? String(existing.thumbnail_url) : null;
     if (data.thumbnailUrl !== undefined) {
       if (data.thumbnailUrl && data.thumbnailUrl.trim()) {
-        const tCheck = validateSafeExternalUrl(data.thumbnailUrl, true, true);
+        const thumbInput = normalizeThumbnailUrl(data.thumbnailUrl);
+        const tCheck = validateSafeExternalUrl(thumbInput, true, true);
         if (!tCheck.valid || !tCheck.normalizedUrl) {
           res.status(400).json({ error: tCheck.error || 'Invalid thumbnail URL.' });
           return;

@@ -188,22 +188,139 @@ export function convertGitHubVideoUrl(inputUrl: string): {
   return { normalizedUrl: trimmed, convertedFromGithub: false };
 }
 
+export function convertImgurMediaUrl(
+  inputUrl: string,
+  target: 'video' | 'image' = 'video'
+): { normalizedUrl: string; convertedFromImgur: boolean } {
+  const trimmed = inputUrl.trim();
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'imgur.com' || host === 'www.imgur.com' || host === 'i.imgur.com') {
+      const parts = parsed.pathname.replace(/^\/+|\/+$/g, '').split('/');
+      const reservedPaths = new Set(['signin', 'register', 'upload', 'about', 't', 'r', 'user', 'search']);
+      if (parts.length > 0 && !reservedPaths.has(parts[0].toLowerCase())) {
+        let mediaId = parts[parts.length - 1];
+        const dotIndex = mediaId.lastIndexOf('.');
+        if (dotIndex !== -1) {
+          mediaId = mediaId.substring(0, dotIndex);
+        }
+        if (mediaId && /^[a-zA-Z0-9_-]+$/.test(mediaId)) {
+          const ext = target === 'image' ? 'jpg' : 'mp4';
+          return {
+            normalizedUrl: `https://i.imgur.com/${mediaId}.${ext}`,
+            convertedFromImgur: true,
+          };
+        }
+      }
+    }
+  } catch {
+    // Handled downstream
+  }
+  return { normalizedUrl: trimmed, convertedFromImgur: false };
+}
+
+export function convertTwitterMediaUrl(
+  inputUrl: string
+): { normalizedUrl: string; isTwitter: boolean; isStatus: boolean } {
+  const trimmed = inputUrl.trim();
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === 'twitter.com' ||
+      host === 'www.twitter.com' ||
+      host === 'x.com' ||
+      host === 'www.x.com'
+    ) {
+      const statusMatch = parsed.pathname.match(/^\/([^/]+)\/status\/(\d+)/i);
+      if (statusMatch) {
+        return {
+          normalizedUrl: `https://x.com/${statusMatch[1]}/status/${statusMatch[2]}`,
+          isTwitter: true,
+          isStatus: true,
+        };
+      }
+      return { normalizedUrl: trimmed, isTwitter: true, isStatus: false };
+    }
+    if (host === 'video.twimg.com' || host === 'pbs.twimg.com' || host === 'abs.twimg.com') {
+      return { normalizedUrl: trimmed, isTwitter: true, isStatus: false };
+    }
+  } catch {
+    // Handled downstream
+  }
+  return { normalizedUrl: trimmed, isTwitter: false, isStatus: false };
+}
+
+export function convertMediaUrl(
+  inputUrl: string,
+  target: 'video' | 'image' = 'video'
+): {
+  normalizedUrl: string;
+  convertedFromGithub: boolean;
+  convertedFromImgur: boolean;
+  isTwitter: boolean;
+  isTwitterStatus: boolean;
+} {
+  const gh = convertGitHubVideoUrl(inputUrl);
+  let currentUrl = gh.normalizedUrl;
+
+  const imgur = convertImgurMediaUrl(currentUrl, target);
+  currentUrl = imgur.normalizedUrl;
+
+  const tw = convertTwitterMediaUrl(currentUrl);
+  if (tw.isStatus) {
+    currentUrl = tw.normalizedUrl;
+  }
+
+  return {
+    normalizedUrl: currentUrl,
+    convertedFromGithub: gh.convertedFromGithub,
+    convertedFromImgur: imgur.convertedFromImgur,
+    isTwitter: tw.isTwitter,
+    isTwitterStatus: tw.isStatus,
+  };
+}
+
+export function normalizeThumbnailUrl(rawUrl: string): string {
+  const imgur = convertImgurMediaUrl(rawUrl, 'image');
+  return imgur.normalizedUrl;
+}
+
 export interface VideoValidationResult {
   valid: boolean;
   normalizedUrl?: string;
   convertedFromGithub: boolean;
+  convertedFromImgur?: boolean;
+  isTwitter?: boolean;
+  isTwitterStatus?: boolean;
   mimeType?: 'video/mp4' | 'video/webm';
   error?: string;
 }
 
 export function validateVideoUrl(rawUrl: string): VideoValidationResult {
-  const { normalizedUrl, convertedFromGithub } = convertGitHubVideoUrl(rawUrl);
-  const urlCheck = validateSafeExternalUrl(normalizedUrl, true, true);
+  const converted = convertMediaUrl(rawUrl, 'video');
+  const urlCheck = validateSafeExternalUrl(converted.normalizedUrl, true, true);
   if (!urlCheck.valid || !urlCheck.normalizedUrl) {
     return {
       valid: false,
-      convertedFromGithub,
+      convertedFromGithub: converted.convertedFromGithub,
+      convertedFromImgur: converted.convertedFromImgur,
+      isTwitter: converted.isTwitter,
+      isTwitterStatus: converted.isTwitterStatus,
       error: urlCheck.error || 'Invalid video URL.',
+    };
+  }
+
+  if (converted.isTwitterStatus) {
+    return {
+      valid: true,
+      normalizedUrl: urlCheck.normalizedUrl,
+      convertedFromGithub: converted.convertedFromGithub,
+      convertedFromImgur: converted.convertedFromImgur,
+      isTwitter: true,
+      isTwitterStatus: true,
+      mimeType: 'video/mp4',
     };
   }
 
@@ -212,7 +329,9 @@ export function validateVideoUrl(rawUrl: string): VideoValidationResult {
     return {
       valid: true,
       normalizedUrl: urlCheck.normalizedUrl,
-      convertedFromGithub,
+      convertedFromGithub: converted.convertedFromGithub,
+      convertedFromImgur: converted.convertedFromImgur,
+      isTwitter: converted.isTwitter,
       mimeType: 'video/mp4',
     };
   }
@@ -220,15 +339,19 @@ export function validateVideoUrl(rawUrl: string): VideoValidationResult {
     return {
       valid: true,
       normalizedUrl: urlCheck.normalizedUrl,
-      convertedFromGithub,
+      convertedFromGithub: converted.convertedFromGithub,
+      convertedFromImgur: converted.convertedFromImgur,
+      isTwitter: converted.isTwitter,
       mimeType: 'video/webm',
     };
   }
 
   return {
     valid: false,
-    convertedFromGithub,
-    error: 'Unsupported video format. Direct HTTPS URL must point to an .mp4 or .webm file.',
+    convertedFromGithub: converted.convertedFromGithub,
+    convertedFromImgur: converted.convertedFromImgur,
+    isTwitter: converted.isTwitter,
+    error: 'Unsupported video format. Direct HTTPS URL must point to an .mp4 or .webm file (or Imgur / X video link).',
   };
 }
 

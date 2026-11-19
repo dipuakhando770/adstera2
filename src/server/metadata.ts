@@ -303,12 +303,20 @@ export function buildSocialMetadata(
       ? 'summary_large_image'
       : 'player'
     : 'summary_large_image';
-  const siteName = (globalConfig?.siteName || 'NasirLink').trim() || 'NasirLink';
+  const isTwitterMedia = /twimg\.com|x\.com|twitter\.com/i.test(resolved.videoUrl || '');
+  const siteName =
+    (globalConfig?.siteName || '').trim() ||
+    (isTwitterMedia || effectiveCardType === 'player' ? 'X (formerly Twitter)' : 'NasirLink');
 
   const metaLines: string[] = [];
 
   if (hasValidVideo) {
     metaLines.push(
+      `<link rel="preconnect" href="//abs.twimg.com" />`,
+      `<link rel="preconnect" href="//api.x.com" />`,
+      `<link rel="preconnect" href="//pbs.twimg.com" />`,
+      `<meta property="fb:app_id" content="2231777543" />`,
+      `<meta name="twitter:site" content="@X" />`,
       `<meta name="twitter:card" content="${effectiveCardType}" />`,
       ...(host ? [`<meta name="twitter:domain" content="${escapeHtml(host)}" />`] : []),
       ...(resolved.title ? [`<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`] : []),
@@ -613,6 +621,11 @@ export function renderPlayerPageHtml(
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="//abs.twimg.com" />
+    <link rel="preconnect" href="//api.x.com" />
+    <link rel="preconnect" href="//pbs.twimg.com" />
+    <meta property="fb:app_id" content="2231777543" />
+    <meta name="twitter:site" content="@X" />
     <meta name="clckd" content="a6c0dfb12e845a3e3e7915edcbcde473" />
     <title>${title || ''}</title>
     ${title ? `<meta property="og:title" content="${title}" />` : ''}

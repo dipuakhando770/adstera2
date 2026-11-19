@@ -14,7 +14,7 @@ import {
   Video,
 } from 'lucide-react';
 import type { LinkRecord, LinkType, RedirectStatusCode, VideoStreamAudit } from '../shared/types';
-import { convertGitHubVideoUrl, validateVideoUrl } from '../shared/validation';
+import { convertGitHubVideoUrl, convertMediaUrl, convertImgurMediaUrl, validateVideoUrl } from '../shared/validation';
 import { captureVideoFrameAndDims } from '../shared/videoFrameCapture';
 import { useApp } from '../context/AppContext';
 import { useToast } from './Toast';
@@ -218,12 +218,18 @@ export function LinkForm({
     };
   }, [videoUrl, linkType, editingLink?.id, editingLink?.videoUrl, editingLink?.thumbnailUrl]);
 
-  // Auto-convert GitHub URL & validate video URL locally + read container hints
+  // Auto-convert GitHub, Imgur, & X/Twitter video URLs locally + read container hints
   const handleVideoUrlChange = (raw: string) => {
-    const converted = convertGitHubVideoUrl(raw);
+    const converted = convertMediaUrl(raw, 'video');
     if (converted.convertedFromGithub) {
       setVideoUrl(converted.normalizedUrl);
       notify('Converted GitHub repository link to raw video stream URL', 'info');
+    } else if (converted.convertedFromImgur) {
+      setVideoUrl(converted.normalizedUrl);
+      notify('Converted Imgur link to direct video stream URL', 'info');
+    } else if (converted.isTwitter) {
+      setVideoUrl(converted.normalizedUrl);
+      notify('X (Twitter) video link recognized', 'info');
     } else {
       setVideoUrl(raw);
     }
@@ -690,8 +696,19 @@ export function LinkForm({
                     <input
                       type="text"
                       value={thumbnailUrl}
-                      onChange={(e) => setThumbnailUrl(e.target.value)}
-                      placeholder="Auto /poster/:slug.jpg (required by X & OG)"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const converted = convertImgurMediaUrl(val, 'image');
+                        setThumbnailUrl(converted.normalizedUrl);
+                      }}
+                      onBlur={(e) => {
+                        const converted = convertImgurMediaUrl(e.target.value, 'image');
+                        if (converted.convertedFromImgur) {
+                          setThumbnailUrl(converted.normalizedUrl);
+                          notify('Converted Imgur link to direct poster image URL', 'info');
+                        }
+                      }}
+                      placeholder="Auto /poster/:slug.jpg (or https://i.imgur.com/ANH_CUA_BAN.jpg)"
                       className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-2 focus:outline-indigo-600"
                     />
                   </div>
