@@ -708,7 +708,7 @@ export function LinkForm({
                           notify('Converted Imgur link to direct poster image URL', 'info');
                         }
                       }}
-                      placeholder="Auto /poster/:slug.jpg (or https://i.imgur.com/ANH_CUA_BAN.jpg)"
+                      placeholder="https://i.imgur.com/RZj7NBWh.jpg or auto /poster/:slug.jpg"
                       className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-2 focus:outline-indigo-600"
                     />
                   </div>
@@ -1214,53 +1214,101 @@ export function LinkForm({
       <Modal
         open={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
-        title="Share Short Link"
-        subtitle={activeShortUrl}
+        title="Share Social Video Link"
+        subtitle={activeResult?.linkType === 'video' || activeResult?.previewEnabled ? `${origin}/s/${activeResult?.slug}` : activeShortUrl}
         maxWidth="md"
       >
-        {activeResult && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              {
-                name: 'X (Twitter)',
-                href: `https://twitter.com/intent/tweet?url=${encodeURIComponent(activeShortUrl)}&text=${encodeURIComponent(activeResult.videoTitle || 'Check out this link')}`,
-              },
-              {
-                name: 'Facebook',
-                href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(activeShortUrl)}`,
-              },
-              {
-                name: 'Telegram',
-                href: `https://t.me/share/url?url=${encodeURIComponent(activeShortUrl)}&text=${encodeURIComponent(activeResult.videoTitle || '')}`,
-              },
-              {
-                name: 'WhatsApp',
-                href: `https://wa.me/?text=${encodeURIComponent(activeShortUrl)}`,
-              },
-              {
-                name: 'Reddit',
-                href: `https://www.reddit.com/submit?url=${encodeURIComponent(activeShortUrl)}&title=${encodeURIComponent(activeResult.videoTitle || activeResult.slug)}`,
-              },
-            ].map((s) => (
-              <a
-                key={s.name}
-                href={s.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-              >
-                {s.name}
-              </a>
-            ))}
-            <button
-              type="button"
-              onClick={() => copyShortUrl(activeShortUrl)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white px-3 py-2.5 text-xs font-semibold hover:bg-indigo-700"
-            >
-              Copy Link
-            </button>
-          </div>
-        )}
+        {activeResult && (() => {
+          const shareUrl = activeResult.linkType === 'video' || activeResult.previewEnabled
+            ? `${origin}/s/${encodeURIComponent(activeResult.slug)}`
+            : activeShortUrl;
+          const shareTitle = activeResult.videoTitle || 'Check out this video';
+          return (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs">
+                <div className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Social Sharing URL (serves X Player Card &amp; OpenGraph Video):
+                </div>
+                <div className="font-mono text-indigo-600 dark:text-indigo-400 break-all select-all">
+                  {shareUrl}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <a
+                  key="twitter"
+                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  X (Twitter)
+                </a>
+                <a
+                  key="facebook"
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Facebook
+                </a>
+                <a
+                  key="telegram"
+                  href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Telegram
+                </a>
+                <a
+                  key="whatsapp"
+                  href={`https://wa.me/?text=${encodeURIComponent(shareUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  WhatsApp
+                </a>
+                <a
+                  key="reddit"
+                  href={`https://www.reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Reddit
+                </a>
+                {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                  <button
+                    key="native"
+                    type="button"
+                    onClick={() => {
+                      navigator.share({
+                        title: shareTitle,
+                        url: shareUrl,
+                      }).catch(() => {});
+                    }}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 px-3 py-2.5 text-xs font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Native Share
+                  </button>
+                )}
+                <button
+                  key="copy"
+                  type="button"
+                  onClick={() => copyShortUrl(shareUrl)}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white px-3 py-2.5 text-xs font-semibold hover:bg-indigo-700 col-span-2 sm:col-span-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Share Link
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

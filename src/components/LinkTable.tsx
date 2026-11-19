@@ -12,6 +12,7 @@ import {
   PlayCircle,
   PlaySquare,
   QrCode,
+  Share2,
   Trash2,
   Video,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ export function LinkTable({
 
   const [editingLink, setEditingLink] = useState<LinkRecord | null>(null);
   const [qrLink, setQrLink] = useState<LinkRecord | null>(null);
+  const [shareLink, setShareLink] = useState<LinkRecord | null>(null);
   const [analyticsLink, setAnalyticsLink] = useState<LinkRecord | null>(null);
 
   useEffect(() => {
@@ -104,6 +106,10 @@ export function LinkTable({
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://nasirlink.com';
   const shortUrlFor = (l: LinkRecord) => `${origin}/${l.slug}`;
+  const shareUrlFor = (l: LinkRecord) =>
+    l.linkType === 'video' || l.previewEnabled
+      ? `${origin}/s/${encodeURIComponent(l.slug)}`
+      : shortUrlFor(l);
 
   const handleToggleActive = async (link: LinkRecord) => {
     const res = await fetch(`/api/links/${link.id}`, {
@@ -374,6 +380,14 @@ export function LinkTable({
                             </button>
                           </>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setShareLink(link)}
+                          title="Share Link on Social Media"
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </button>
                         <a
                           href={`/${link.slug}`}
                           target="_blank"
@@ -468,6 +482,108 @@ export function LinkTable({
         maxWidth="2xl"
       >
         {analyticsLink && <AnalyticsDashboard initialLinkId={analyticsLink.id} />}
+      </Modal>
+
+      {/* Social Share Modal */}
+      <Modal
+        open={Boolean(shareLink)}
+        onClose={() => setShareLink(null)}
+        title={shareLink ? `Share — /${shareLink.slug}` : 'Share Link'}
+        subtitle={shareLink ? shareUrlFor(shareLink) : ''}
+        maxWidth="md"
+      >
+        {shareLink && (() => {
+          const sUrl = shareUrlFor(shareLink);
+          const sTitle = shareLink.videoTitle || 'Check out this video';
+          return (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs">
+                <div className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Social Sharing URL (with X Player Card metadata):
+                </div>
+                <div className="font-mono text-indigo-600 dark:text-indigo-400 break-all select-all">
+                  {sUrl}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <a
+                  key="twitter"
+                  href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(sUrl)}&text=${encodeURIComponent(sTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  X (Twitter)
+                </a>
+                <a
+                  key="facebook"
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(sUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Facebook
+                </a>
+                <a
+                  key="telegram"
+                  href={`https://t.me/share/url?url=${encodeURIComponent(sUrl)}&text=${encodeURIComponent(sTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Telegram
+                </a>
+                <a
+                  key="whatsapp"
+                  href={`https://wa.me/?text=${encodeURIComponent(sUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  WhatsApp
+                </a>
+                <a
+                  key="reddit"
+                  href={`https://www.reddit.com/submit?url=${encodeURIComponent(sUrl)}&title=${encodeURIComponent(sTitle)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Reddit
+                </a>
+                {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                  <button
+                    key="native"
+                    type="button"
+                    onClick={() => {
+                      navigator.share({
+                        title: sTitle,
+                        url: sUrl,
+                      }).catch(() => {});
+                    }}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 px-3 py-2.5 text-xs font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Native Share
+                  </button>
+                )}
+                <button
+                  key="copy"
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(sUrl);
+                    notify('Social share URL copied!', 'success');
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white px-3 py-2.5 text-xs font-semibold hover:bg-indigo-700 col-span-2 sm:col-span-1"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Share Link
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
