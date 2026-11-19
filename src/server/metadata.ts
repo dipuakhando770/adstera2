@@ -184,11 +184,6 @@ export function resolveEffectiveVideo(
     : link.videoTitle?.trim() || `Video Preview: ${link.slug}`;
   const title = pickTitleFromVariants(link, baseTitle);
 
-  const description = useGlobal
-    ? globalConfig?.globalVideoDescription?.trim() ||
-      link.videoDescription?.trim() ||
-      `Watch video and continue to ${destDomain}.`
-    : link.videoDescription?.trim() || `Watch video and continue to ${destDomain}.`;
 
   if (!rawVideoUrl) {
     return {
@@ -305,7 +300,7 @@ export function buildSocialMetadata(
       ? 'summary_large_image'
       : 'player'
     : 'summary_large_image';
-  const siteName = (globalConfig?.siteName || 'NasirLink').trim() || 'NasirLink';
+  const siteName = (globalConfig?.siteName || '').trim() || '';
 
   const metaLines: string[] = [];
 
