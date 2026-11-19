@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Code2, ExternalLink, PlaySquare, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { LinkRecord, SocialMetadataPreview, VideoStreamAudit } from '../shared/types';
+import { captureVideoFrameAndDims } from '../shared/videoFrameCapture';
+import { validateVideoUrl } from '../shared/validation';
 import { useToast } from './Toast';
 import { VideoPlayer } from './VideoPlayer';
 
@@ -219,12 +221,12 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
 
               <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3">
                 <VideoPlayer
-                  src={metadata.ogVideo}
-                  poster={thumbnailUrl.trim() || metadata.ogImage || `/poster/${encodeURIComponent(selectedSlug)}.jpg`}
+                  src={videoUrl.trim() || metadata.ogVideo}
+                  poster={thumbnailUrl.trim() || undefined}
                   mimeType={metadata.ogVideoType}
                   title={livePreviewTitle}
-                  width={metadata.twitterPlayerWidth || displayWidth}
-                  height={metadata.twitterPlayerHeight || displayHeight}
+                  width={displayWidth}
+                  height={displayHeight}
                   sourceUrl={metadata.sourceUrl}
                   sourceDomain={metadata.sourceDomain}
                 />
@@ -438,7 +440,29 @@ export function MetadataDebugger({ initialSlug = '', videoLinks = [] }: Metadata
                 type="text"
                 required
                 value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
+                onChange={(e) => {
+                  const nextUrl = e.target.value;
+                  setVideoUrl(nextUrl);
+                  const check = validateVideoUrl(nextUrl.trim());
+                  if (check.valid && check.normalizedUrl) {
+                    if (thumbnailUrl.trim().startsWith('data:image/')) {
+                      setThumbnailUrl('');
+                    }
+                    captureVideoFrameAndDims(check.normalizedUrl, { captureFrame: true }).then((res) => {
+                      if (res.width > 0 && res.height > 0) {
+                        setPlayerWidth(res.width);
+                        setPlayerHeight(res.height);
+                      }
+                      if (res.thumbnailDataUrl) {
+                        setThumbnailUrl((prev) =>
+                          !prev.trim() || prev.trim().startsWith('data:image/')
+                            ? res.thumbnailDataUrl || ''
+                            : prev
+                        );
+                      }
+                    });
+                  }
+                }}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
               />
             </div>

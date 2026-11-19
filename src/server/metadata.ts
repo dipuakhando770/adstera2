@@ -285,7 +285,12 @@ export function buildSocialMetadata(
     `${safeOrigin}/embed/${encodeURIComponent(link.slug)}`;
   const oembedUrl = `${safeOrigin}/api/oembed?url=${encodeURIComponent(pageUrl)}`;
   const posterUrl = resolvePosterAccessUrl(link, safeOrigin);
+  const hasExplicitPoster = Boolean((link.thumbnailUrl || '').trim());
   const isDefaultPoster = !/^https?:\/\//i.test((link.thumbnailUrl || '').trim());
+  const defaultPosterW = (link.videoUrl || '').includes('showcase1.mp4') ? 1290 : 720;
+  const defaultPosterH = (link.videoUrl || '').includes('showcase1.mp4') ? 720 : 1278;
+  const effectiveImageWidth = isDefaultPoster ? (hasExplicitPoster && detectedWidth > 0 ? detectedWidth : defaultPosterW) : undefined;
+  const effectiveImageHeight = isDefaultPoster ? (hasExplicitPoster && detectedHeight > 0 ? detectedHeight : defaultPosterH) : undefined;
 
   const secureVideoUrl = isLocal
     ? resolved.videoUrl
@@ -334,10 +339,10 @@ export function buildSocialMetadata(
       `<meta property="og:image:url" content="${escapeHtml(posterUrl)}" />`,
       `<meta property="og:image:secure_url" content="${escapeHtml(posterUrl)}" />`,
       `<meta property="og:image:type" content="image/jpeg" />`,
-      ...(isDefaultPoster
+      ...(effectiveImageWidth && effectiveImageHeight
         ? [
-            `<meta property="og:image:width" content="1376" />`,
-            `<meta property="og:image:height" content="768" />`,
+            `<meta property="og:image:width" content="${effectiveImageWidth}" />`,
+            `<meta property="og:image:height" content="${effectiveImageHeight}" />`,
           ]
         : []),
       `<meta property="og:video" content="${escapeHtml(secureVideoUrl)}" />`,
@@ -436,8 +441,8 @@ export function buildSocialMetadata(
     ogImageUrl: posterUrl,
     ogImageSecureUrl: posterUrl,
     ogImageType: 'image/jpeg',
-    ogImageWidth: isDefaultPoster ? 1376 : undefined,
-    ogImageHeight: isDefaultPoster ? 768 : undefined,
+    ogImageWidth: effectiveImageWidth,
+    ogImageHeight: effectiveImageHeight,
     ogVideo: hasValidVideo ? secureVideoUrl : '',
     ogVideoUrl: hasValidVideo ? secureVideoUrl : '',
     ogVideoSecureUrl: hasValidVideo ? secureVideoUrl : '',
@@ -484,7 +489,9 @@ export function renderLandingBodySnapshot(
   const safeTitle = escapeHtml(meta.title);
   const safeDesc = escapeHtml(meta.description);
   const safeVideo = escapeHtml(meta.ogVideo);
-  const safePoster = escapeHtml(meta.ogImage || resolvePosterAccessUrl(link, origin));
+  const hasRealPoster = Boolean((link.thumbnailUrl || '').trim());
+  const safePoster = hasRealPoster ? escapeHtml(meta.ogImage || resolvePosterAccessUrl(link, origin)) : '';
+  const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
   const safeMime = escapeHtml(meta.ogVideoType || 'video/mp4');
   const aspectCss =
     meta.ogVideoWidth > 0 && meta.ogVideoHeight > 0
@@ -495,7 +502,7 @@ export function renderLandingBodySnapshot(
       ${
         meta.hasValidVideo && safeVideo
           ? `<div style="background:#000;display:flex;justify-content:center;align-items:center;">
-              <video controls autoplay muted playsinline loop preload="auto" poster="${safePoster}" style="width:100%;max-height:75vh;aspect-ratio:${aspectCss};object-fit:contain;display:block;background:#000;">
+              <video controls autoplay muted playsinline loop preload="auto"${posterAttr} style="width:100%;max-height:75vh;aspect-ratio:${aspectCss};object-fit:contain;display:block;background:#000;">
                 <source src="${safeVideo}" type="${safeMime}" />
               </video>
             </div>
@@ -598,6 +605,8 @@ export function renderPlayerPageHtml(
   const errorMsg = escapeHtml(
     resolved.videoError || 'Configured video stream is currently unavailable.'
   );
+  const hasRealPoster = Boolean((link.thumbnailUrl || '').trim());
+  const videoPosterAttr = hasRealPoster ? ` poster="${safePoster}"` : '';
   const hasKnownDims = resolved.width >= 160 && resolved.height >= 90;
   const aspectCss = hasKnownDims ? `${resolved.width} / ${resolved.height}` : 'auto';
   const safeSourceUrl = resolved.sourceUrl ? escapeHtml(resolved.sourceUrl) : '';
@@ -704,7 +713,7 @@ export function renderPlayerPageHtml(
         ${
           hasVideo
             ? `<div class="video-aspect" id="nl-video-wrap">
-                <video id="nl-player" controls autoplay muted playsinline loop preload="auto" poster="${safePoster}" aria-label="${title}">
+                <video id="nl-player" controls autoplay muted playsinline loop preload="auto"${videoPosterAttr} aria-label="${title}">
                   <source id="nl-source" src="${videoUrl}" type="${mime}" />
                 </video>
               </div>`

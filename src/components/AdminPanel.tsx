@@ -24,6 +24,8 @@ import type {
   SystemSettings,
   VideoStreamAudit,
 } from '../shared/types';
+import { validateVideoUrl } from '../shared/validation';
+import { captureVideoFrameAndDims } from '../shared/videoFrameCapture';
 import { useApp } from '../context/AppContext';
 import { useToast } from './Toast';
 import { StatCard } from './StatCard';
@@ -1193,7 +1195,29 @@ export function AdminPanel() {
               <input
                 type="text"
                 value={editVideoUrl}
-                onChange={(e) => setEditVideoUrl(e.target.value)}
+                onChange={(e) => {
+                  const nextUrl = e.target.value;
+                  setEditVideoUrl(nextUrl);
+                  const check = validateVideoUrl(nextUrl.trim());
+                  if (check.valid && check.normalizedUrl) {
+                    if (editThumbUrl.trim().startsWith('data:image/')) {
+                      setEditThumbUrl('');
+                    }
+                    captureVideoFrameAndDims(check.normalizedUrl, { captureFrame: true }).then((res) => {
+                      if (res.width > 0 && res.height > 0) {
+                        setEditWidth(res.width);
+                        setEditHeight(res.height);
+                      }
+                      if (res.thumbnailDataUrl) {
+                        setEditThumbUrl((prev) =>
+                          !prev.trim() || prev.trim().startsWith('data:image/')
+                            ? res.thumbnailDataUrl || ''
+                            : prev
+                        );
+                      }
+                    });
+                  }
+                }}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-900 dark:text-slate-100"
               />
             </div>

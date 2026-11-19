@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { LinkRecord, LinkType, RedirectStatusCode, VideoStreamAudit } from '../shared/types';
 import { convertGitHubVideoUrl, validateVideoUrl } from '../shared/validation';
+import { captureVideoFrameAndDims } from '../shared/videoFrameCapture';
 import { useApp } from '../context/AppContext';
 import { useToast } from './Toast';
 import { VideoPlayer } from './VideoPlayer';
@@ -177,7 +178,7 @@ export function LinkForm({
     return () => clearTimeout(timer);
   }, [customAlias, editingLink?.id]);
 
-  // Auto-detect real original video dimensions via browser metadata without CORS blocking or poster capture
+  // Auto-detect real original video dimensions & capture real first frame of selected video
   useEffect(() => {
     const trimmed = videoUrl.trim();
     if (!trimmed || linkType !== 'video') return;
@@ -185,28 +186,37 @@ export function LinkForm({
     if (!check.valid || !check.normalizedUrl) return;
 
     let cancelled = false;
-    const probe = document.createElement('video');
-    probe.muted = true;
-    probe.playsInline = true;
-    probe.preload = 'metadata';
+    const currentVideoNormalized = check.normalizedUrl;
 
-    const handleLoadedMetadata = () => {
+    // Never keep an old auto-captured frame when switching to a different video URL
+    const isUnchangedEditingVideo =
+      Boolean(editingLink?.videoUrl) && editingLink?.videoUrl === currentVideoNormalized;
+    if (!isUnchangedEditingVideo) {
+      setThumbnailUrl((prev) => (prev.trim().startsWith('data:image/') ? '' : prev));
+    }
+
+    const shouldCapture = !isUnchangedEditingVideo || !editingLink?.thumbnailUrl?.trim();
+    captureVideoFrameAndDims(currentVideoNormalized, { captureFrame: shouldCapture }).then((res) => {
       if (cancelled) return;
-      if (probe.videoWidth && probe.videoHeight) {
-        setVideoWidth(probe.videoWidth);
-        setVideoHeight(probe.videoHeight);
+      if (res.width > 0 && res.height > 0) {
+        setVideoWidth(res.width);
+        setVideoHeight(res.height);
       }
-    };
-
-    probe.addEventListener('loadedmetadata', handleLoadedMetadata);
-    probe.src = check.normalizedUrl;
+      if (res.thumbnailDataUrl) {
+        setThumbnailUrl((prev) => {
+          const p = prev.trim();
+          if (!p || p.startsWith('data:image/')) {
+            return res.thumbnailDataUrl || '';
+          }
+          return prev;
+        });
+      }
+    });
 
     return () => {
       cancelled = true;
-      probe.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      probe.src = '';
     };
-  }, [videoUrl, linkType]);
+  }, [videoUrl, linkType, editingLink?.id, editingLink?.videoUrl, editingLink?.thumbnailUrl]);
 
   // Auto-convert GitHub URL & validate video URL locally + read container hints
   const handleVideoUrlChange = (raw: string) => {
@@ -809,9 +819,7 @@ export function LinkForm({
 
                 {(() => {
                   const previewAttr = getPreviewSourceDomain(videoUrl, publicSettings.domain);
-                  const previewPoster =
-                    thumbnailUrl.trim() ||
-                    (editingLink ? `/poster/${encodeURIComponent(editingLink.slug)}.jpg` : '/samples/default-poster.jpg');
+                  const previewPoster = thumbnailUrl.trim() || undefined;
                   return previewTab === 'landing' ? (
                     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 space-y-2.5">
                       <VideoPlayer

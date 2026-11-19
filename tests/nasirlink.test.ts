@@ -335,27 +335,35 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(meta.sourceUrl).toBe('https://imgbb.space/example');
   });
 
-  it('renders /embed/:slug HTML5 player with controls, poster, loop, autoplay/muted/playsinline/contain, aspect ratio, and real From domain link', () => {
+  it('renders /embed/:slug HTML5 player with controls, loop, autoplay/muted/playsinline/contain, aspect ratio, real From domain link, and real frame poster only when captured', () => {
     const portraitLink: LinkRecord = {
       ...sampleLink,
       videoUrl: 'https://imgbb.space/vertical/clip.mp4?token=secret',
       videoWidth: 720,
       videoHeight: 1278,
     };
-    const html = renderPlayerPageHtml(portraitLink, 'https://nasirlink.com');
-    expect(html).toContain('controls autoplay muted playsinline loop preload="auto"');
-    expect(html).toContain('poster="https://nasirlink.com/poster/demo-card.jpg"');
-    expect(html).toContain('object-fit: contain');
-    expect(html).toContain('aspect-ratio: 720 / 1278');
-    expect(html).toContain('border: none');
-    expect(html).toContain('border-radius: 0');
-    expect(html).toContain('href="https://imgbb.space/vertical/clip.mp4"');
-    expect(html).toContain('>From imgbb.space</a>');
-    expect(html).not.toContain('nl-btn-play');
-    expect(html).not.toContain('nl-btn-pause');
-    expect(html).not.toContain('nl-btn-stop');
-    expect(html).not.toMatch(/class="source-link"[^>]*token=secret/);
-    expect(html).not.toContain('window.location.replace');
+    const htmlWithoutPoster = renderPlayerPageHtml(portraitLink, 'https://nasirlink.com');
+    expect(htmlWithoutPoster).toContain('controls autoplay muted playsinline loop preload="auto"');
+    expect(htmlWithoutPoster).toContain('<meta property="og:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
+    expect(htmlWithoutPoster).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
+    expect(htmlWithoutPoster).not.toMatch(/<video[^>]*\sposter=/);
+    expect(htmlWithoutPoster).toContain('object-fit: contain');
+    expect(htmlWithoutPoster).toContain('aspect-ratio: 720 / 1278');
+    expect(htmlWithoutPoster).toContain('border: none');
+    expect(htmlWithoutPoster).toContain('border-radius: 0');
+    expect(htmlWithoutPoster).toContain('href="https://imgbb.space/vertical/clip.mp4"');
+    expect(htmlWithoutPoster).toContain('>From imgbb.space</a>');
+    expect(htmlWithoutPoster).not.toContain('nl-btn-play');
+    expect(htmlWithoutPoster).not.toContain('nl-btn-pause');
+    expect(htmlWithoutPoster).not.toContain('nl-btn-stop');
+    expect(htmlWithoutPoster).not.toMatch(/class="source-link"[^>]*token=secret/);
+    expect(htmlWithoutPoster).not.toContain('window.location.replace');
+
+    const htmlWithCapturedFrame = renderPlayerPageHtml(
+      { ...portraitLink, thumbnailUrl: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA==' },
+      'https://nasirlink.com'
+    );
+    expect(htmlWithCapturedFrame).toContain('poster="https://nasirlink.com/poster/demo-card.jpg"');
   });
 });
 
@@ -509,7 +517,7 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     expect(directRedirectRes.status).toBe(302);
     expect(directRedirectRes.headers.get('location')).toContain('https://example.com/my-destination');
 
-    // /embed/:slug page check (frameable, player with controls+poster+loop, aspect ratio preserved, From domain link)
+    // /embed/:slug page check (frameable, player with controls+loop, aspect ratio preserved, no fake poster, From domain link)
     const embedRes = await worker.fetch(new Request('https://nasirlink.com/embed/portrait720'), env);
     expect(embedRes.status).toBe(200);
     expect(embedRes.headers.get('content-security-policy')).toContain('frame-ancestors *');
@@ -517,7 +525,7 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     const embedHtml = await embedRes.text();
     expect(embedHtml).toContain('https://video.twimg.com/amplify_video/2122735467695353856/vid/avc1/720x1278/5kKXcgJKfyoEYzwe.mp4');
     expect(embedHtml).toContain('controls autoplay muted playsinline loop preload="auto"');
-    expect(embedHtml).toContain('poster="https://nasirlink.com/poster/portrait720.jpg"');
+    expect(embedHtml).not.toMatch(/<video[^>]*\sposter=/);
     expect(embedHtml).toContain('aspect-ratio: 720 / 1278');
     expect(embedHtml).toContain('>From video.twimg.com</a>');
     expect(embedHtml).not.toContain('nl-btn-play');
