@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nasirlink",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "vars": {
+    "APP_DOMAIN": "nasirlink.com",
+    "DEFAULT_REDIRECT_STATUS": "302"
+  }
+  // Optional: after running `npx wrangler d1 create nasirlink-db`, uncomment and set your real database_id
+  // (or attach a D1 binding named `DB` in Cloudflare Dashboard -> Workers -> Settings -> Bindings):
+  // ,
+  // "d1_databases": [
+  //   {
+  //     "binding": "DB",
+  //     "database_name": "nasirlink-db",
+  //     "database_id": "6b51d029-7427-44ee-b980-723be5a8ed95",
+  //     "migrations_dir": "migrations"
+  //   }
+  // ],
+  // "r2_buckets": [
+  //   {
+  //     "binding": "MEDIA_BUCKET",
+  //     "bucket_name": "nasirlink-media"
+  //   }
+  // ]
+}
