@@ -260,15 +260,27 @@ export function buildSocialMetadata(
   globalConfig?: SystemSettings
 ): SocialMetadataPreview {
   const { isLocal, safeOrigin } = normalizeOrigin(origin);
-  const resolved = resolveEffectiveVideo(link, safeOrigin, globalConfig);
+
+  // Use custom domain from SystemSettings when configured (e.g. "nqknte.lifestyle")
+  // This ensures twitter:player and og:video URLs point to the allowlisted domain
+  const configuredDomain = (globalConfig?.domain || '').trim();
+  const metaOrigin =
+    configuredDomain &&
+    configuredDomain !== 'nasirlink.com' &&
+    configuredDomain !== 'localhost' &&
+    !configuredDomain.startsWith('localhost:')
+      ? `https://${configuredDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`
+      : safeOrigin;
+
+  const resolved = resolveEffectiveVideo(link, metaOrigin, globalConfig);
 
   const pageUrl = canonicalPath
-    ? `${safeOrigin}${canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`}`
-    : `${safeOrigin}/s/${encodeURIComponent(link.slug)}`;
+    ? `${metaOrigin}${canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`}`
+    : `${metaOrigin}/s/${encodeURIComponent(link.slug)}`;
 
   const host = (() => {
     try {
-      return new URL(safeOrigin).host;
+      return new URL(metaOrigin).host;
     } catch {
       return '';
     }
@@ -279,10 +291,10 @@ export function buildSocialMetadata(
   const detectedHeight = hasDetectedDims ? Math.max(90, Math.min(3840, resolved.height)) : 0;
 
   const playerUrl =
-    resolveAbsoluteUrl(link.playerUrl, safeOrigin) ||
-    `${safeOrigin}/embed/${encodeURIComponent(link.slug)}`;
-  const oembedUrl = `${safeOrigin}/api/oembed?url=${encodeURIComponent(pageUrl)}`;
-  const posterUrl = resolvePosterAccessUrl(link, safeOrigin);
+    resolveAbsoluteUrl(link.playerUrl, metaOrigin) ||
+    `${metaOrigin}/embed/${encodeURIComponent(link.slug)}`;
+  const oembedUrl = `${metaOrigin}/api/oembed?url=${encodeURIComponent(pageUrl)}`;
+  const posterUrl = resolvePosterAccessUrl(link, metaOrigin);
   const hasExplicitPoster = Boolean((link.thumbnailUrl || '').trim());
   const isDefaultPoster = !/^https?:\/\//i.test((link.thumbnailUrl || '').trim());
   const defaultPosterW = (link.videoUrl || '').includes('showcase1.mp4') ? 1290 : 720;

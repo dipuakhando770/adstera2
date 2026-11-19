@@ -730,6 +730,7 @@ function htmlResponse(html: string, status = 200, isEmbed = false): Response {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
   };
   if (isEmbed) {
+    // X/Twitter Player Card iframes MUST NOT have X-Frame-Options — only CSP
     headers['Content-Security-Policy'] = 'frame-ancestors *';
   } else {
     headers['X-Frame-Options'] = 'SAMEORIGIN';

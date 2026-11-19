@@ -118,7 +118,9 @@ async function startServer() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (req.path.startsWith('/embed/') || req.path.startsWith('/player/')) {
+      // X/Twitter Player Card iframes MUST NOT have X-Frame-Options — only CSP frame-ancestors
       res.setHeader('Content-Security-Policy', 'frame-ancestors *');
+      res.removeHeader('X-Frame-Options');
     } else {
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     }
@@ -226,7 +228,10 @@ async function startServer() {
     const origin = getRequestOrigin(req);
     const settings = getSystemSettings();
     const html = renderPlayerPageHtml(link, origin, settings);
-    res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' });
+    res.status(200).set({
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, max-age=600',
+    });
     if (req.method === 'HEAD') res.end();
     else res.send(html);
   };
