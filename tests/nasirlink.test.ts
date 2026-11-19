@@ -343,7 +343,7 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
       videoHeight: 1278,
     };
     const htmlWithoutPoster = renderPlayerPageHtml(portraitLink, 'https://nasirlink.com');
-    expect(htmlWithoutPoster).toContain('controls autoplay muted playsinline loop preload="auto"');
+    expect(htmlWithoutPoster).toContain('autoplay muted playsinline loop preload="auto"');
     expect(htmlWithoutPoster).toContain('<meta property="og:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
     expect(htmlWithoutPoster).toContain('<meta name="twitter:image" content="https://nasirlink.com/poster/demo-card.jpg" />');
     expect(htmlWithoutPoster).not.toMatch(/<video[^>]*\sposter=/);
@@ -351,8 +351,8 @@ describe('Server-Rendered X Video Player Card Metadata & Clean Embed Player', ()
     expect(htmlWithoutPoster).toContain('aspect-ratio: 720 / 1278');
     expect(htmlWithoutPoster).toContain('border: none');
     expect(htmlWithoutPoster).toContain('border-radius: 0');
-    expect(htmlWithoutPoster).toContain('href="https://imgbb.space/vertical/clip.mp4"');
-    expect(htmlWithoutPoster).toContain('>From imgbb.space</a>');
+    expect(htmlWithoutPoster).toContain('href="https://example.com/product"');
+    expect(htmlWithoutPoster).not.toContain('class="source-bar"');
     expect(htmlWithoutPoster).not.toContain('nl-btn-play');
     expect(htmlWithoutPoster).not.toContain('nl-btn-pause');
     expect(htmlWithoutPoster).not.toContain('nl-btn-stop');
@@ -524,10 +524,10 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     expect(embedRes.headers.get('x-frame-options')).toBeNull();
     const embedHtml = await embedRes.text();
     expect(embedHtml).toContain('https://video.twimg.com/amplify_video/2122735467695353856/vid/avc1/720x1278/5kKXcgJKfyoEYzwe.mp4');
-    expect(embedHtml).toContain('controls autoplay muted playsinline loop preload="auto"');
+    expect(embedHtml).toContain('autoplay muted playsinline loop preload="auto"');
     expect(embedHtml).not.toMatch(/<video[^>]*\sposter=/);
-    expect(embedHtml).toContain('aspect-ratio: 720 / 1278');
-    expect(embedHtml).toContain('>From video.twimg.com</a>');
+    expect(embedHtml).toContain('object-fit: contain');
+    expect(embedHtml).not.toContain('class="source-bar"');
     expect(embedHtml).not.toContain('nl-btn-play');
 
     // /player/:slug remains compatible and serves the same clean embed
@@ -623,8 +623,8 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
 
     const overrideEmbedRes = await worker.fetch(new Request('https://nasirlink.com/embed/product-tour'), env);
     const overrideEmbedHtml = await overrideEmbedRes.text();
-    expect(overrideEmbedHtml).toContain('>From imgbb.space</a>');
-    expect(overrideEmbedHtml).toContain('href="https://imgbb.space/example"');
+    expect(overrideEmbedHtml).toContain('https://imgbb.space/streams/clip_720x1278.mp4');
+    expect(overrideEmbedHtml).not.toContain('class="source-bar"');
 
     // Clear global override for subsequent checks
     await worker.fetch(

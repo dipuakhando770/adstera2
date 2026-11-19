@@ -625,8 +625,13 @@ export function renderPlayerPageHtml(
   const videoPosterAttr = hasRealPoster ? ` poster="${safePoster}"` : '';
   const hasKnownDims = resolved.width >= 160 && resolved.height >= 90;
   const aspectCss = hasKnownDims ? `${resolved.width} / ${resolved.height}` : 'auto';
-  const safeSourceUrl = resolved.sourceUrl ? escapeHtml(resolved.sourceUrl) : '';
-  const safeSourceDomain = resolved.sourceDomain ? escapeHtml(resolved.sourceDomain) : '';
+
+  const finalDest = appendUtmParams(link.destinationUrl, {
+    source: link.utmSource,
+    medium: link.utmMedium,
+    campaign: link.utmCampaign,
+  });
+  const safeDest = escapeHtml(finalDest);
 
   return `<!doctype html>
 <html lang="en">
@@ -648,6 +653,8 @@ export function renderPlayerPageHtml(
       html, body {
         width: 100%;
         height: 100%;
+        margin: 0;
+        padding: 0;
         background: #000000;
         color: #f8fafc;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -657,31 +664,34 @@ export function renderPlayerPageHtml(
         width: 100%;
         height: 100%;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
         background: #000000;
-      }
-      .video-frame {
         position: relative;
-        flex: 1 1 auto;
-        width: 100%;
-        min-height: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #000000;
+        overflow: hidden;
       }
       .video-aspect {
+        width: 100%;
+        height: 100%;
         max-width: 100%;
         max-height: 100%;
-        width: auto;
-        height: 100%;
         ${hasKnownDims ? `aspect-ratio: ${aspectCss};` : ''}
         display: flex;
         align-items: center;
         justify-content: center;
         background: #000000;
+      }
+      .video-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        text-decoration: none;
+        cursor: pointer;
+        background: #000000;
+        border: none;
+        outline: none;
       }
       video {
         width: 100%;
@@ -709,49 +719,25 @@ export function renderPlayerPageHtml(
       .error-state.visible {
         display: flex;
       }
-      .source-bar {
-        flex: 0 0 auto;
-        width: 100%;
-        padding: 8px 12px;
-        text-align: center;
-        background: #000000;
-      }
-      .source-link {
-        color: #94a3b8;
-        font-size: 13px;
-        text-decoration: none;
-        display: inline-block;
-      }
-      .source-link:hover {
-        color: #e2e8f0;
-        text-decoration: underline;
-      }
     </style>
   </head>
   <body>
     <div class="player-root">
-      <div class="video-frame">
-        ${
-          hasVideo
-            ? `<div class="video-aspect" id="nl-video-wrap">
-                <video id="nl-player" controls autoplay muted playsinline loop preload="auto" webkit-playsinline${videoPosterAttr} aria-label="${title}">
+      ${
+        hasVideo
+          ? `<div class="video-aspect" id="nl-video-wrap">
+              <a class="video-link" href="${safeDest}" target="_blank" rel="noopener noreferrer">
+                <video id="nl-player" autoplay muted playsinline loop preload="auto" webkit-playsinline${videoPosterAttr} aria-label="${title}">
                   <source id="nl-source" src="${videoUrl}" type="${mime}" />
                 </video>
-              </div>`
-            : ''
-        }
-        <div id="nl-error" class="error-state${hasVideo ? '' : ' visible'}">
-          <div style="font-weight:600;color:#fca5a5;">Video stream unavailable</div>
-          <div style="font-size:12px;color:#94a3b8;max-width:420px;">${errorMsg}</div>
-        </div>
-      </div>
-      ${
-        safeSourceUrl && safeSourceDomain
-          ? `<div class="source-bar">
-              <a class="source-link" href="${safeSourceUrl}" target="_blank" rel="noopener noreferrer">From ${safeSourceDomain}</a>
+              </a>
             </div>`
           : ''
       }
+      <div id="nl-error" class="error-state${hasVideo ? '' : ' visible'}">
+        <div style="font-weight:600;color:#fca5a5;">Video stream unavailable</div>
+        <div style="font-size:12px;color:#94a3b8;max-width:420px;">${errorMsg}</div>
+      </div>
     </div>
     <script>
       (function () {
