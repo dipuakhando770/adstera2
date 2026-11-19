@@ -528,7 +528,7 @@ export function AdminPanel() {
                         </td>
                         <td className="py-3.5 px-4 max-w-[240px]">
                           <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-                            {l.videoTitle || `Video Preview: ${l.slug}`}
+                            {l.videoTitle || l.slug}
                           </div>
                           <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400 mt-0.5">
                             {l.twitterCardType} · {l.videoWidth > 0 && l.videoHeight > 0 ? `${l.videoWidth}×${l.videoHeight}` : 'Auto aspect'}

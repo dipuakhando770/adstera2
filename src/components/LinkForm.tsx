@@ -834,7 +834,7 @@ export function LinkForm({
                       />
                       <div className="space-y-1 pt-1">
                         <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 line-clamp-1">
-                          {videoTitle.trim() || `Video Preview: ${customAlias.trim() || 'short-slug'}`}
+                          {videoTitle.trim() || customAlias.trim() || 'video'}
                         </div>
                         {videoDescription.trim() && (
                           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">

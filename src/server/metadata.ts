@@ -491,10 +491,31 @@ export function renderLandingBodySnapshot(
       ${
         meta.hasValidVideo && safeVideo
           ? `<a href="${safeDest}" style="display:flex;align-items:center;justify-content:center;width:100vw;height:100dvh;text-decoration:none;cursor:pointer;background:#000000;border:none;outline:none;margin:0;padding:0;">
-              <video autoplay muted playsinline loop preload="auto" style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;object-fit:contain;display:block;background:#000000;border:none;outline:none;">
+              <video id="nl-landing-video" autoplay muted playsinline loop preload="auto" webkit-playsinline style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;object-fit:contain;display:block;background:#000000;border:none;outline:none;">
                 <source src="${safeVideo}" type="${safeMime}" />
               </video>
-            </a>`
+            </a>
+            <script>
+              (function() {
+                var v = document.getElementById('nl-landing-video');
+                if (!v) return;
+                function play() {
+                  v.defaultMuted = true;
+                  v.muted = true;
+                  v.playsInline = true;
+                  var p = v.play();
+                  if (p && typeof p.catch === 'function') { p.catch(function() {}); }
+                }
+                play();
+                v.addEventListener('loadedmetadata', play);
+                v.addEventListener('loadeddata', play);
+                v.addEventListener('canplay', play);
+                v.addEventListener('canplaythrough', play);
+                window.addEventListener('focus', play);
+                document.addEventListener('touchstart', play, { passive: true, once: true });
+                document.addEventListener('click', play, { passive: true, once: true });
+              })();
+            </script>`
           : `<div style="color:#ffffff;font-family:sans-serif;font-size:14px;padding:20px;text-align:center;">
               ${escapeHtml(meta.videoError || 'Configured video is unavailable.')}
             </div>`
@@ -688,7 +709,7 @@ export function renderPlayerPageHtml(
         ${
           hasVideo
             ? `<div class="video-aspect" id="nl-video-wrap">
-                <video id="nl-player" controls autoplay muted playsinline loop preload="auto"${videoPosterAttr} aria-label="${title}">
+                <video id="nl-player" controls autoplay muted playsinline loop preload="auto" webkit-playsinline${videoPosterAttr} aria-label="${title}">
                   <source id="nl-source" src="${videoUrl}" type="${mime}" />
                 </video>
               </div>`
@@ -719,19 +740,35 @@ export function renderPlayerPageHtml(
           if (errBox) errBox.classList.add('visible');
         }
 
-        if (video) {
+        function playVideo() {
+          if (!video) return;
+          video.defaultMuted = true;
           video.muted = true;
           video.playsInline = true;
-          video.addEventListener('loadedmetadata', function () {
-            if (wrap && video.videoWidth > 0 && video.videoHeight > 0) {
-              wrap.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
-            }
-          });
-          video.addEventListener('error', showError);
           var playPromise = video.play();
           if (playPromise && typeof playPromise.catch === 'function') {
             playPromise.catch(function () {});
           }
+        }
+
+        if (video) {
+          playVideo();
+          video.addEventListener('loadedmetadata', function () {
+            if (wrap && video.videoWidth > 0 && video.videoHeight > 0) {
+              wrap.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+            }
+            playVideo();
+          });
+          video.addEventListener('loadeddata', playVideo);
+          video.addEventListener('canplay', playVideo);
+          video.addEventListener('canplaythrough', playVideo);
+          window.addEventListener('focus', playVideo);
+          document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) playVideo();
+          });
+          document.addEventListener('touchstart', playVideo, { passive: true, once: true });
+          document.addEventListener('click', playVideo, { passive: true, once: true });
+          video.addEventListener('error', showError);
         }
         if (source) {
           source.addEventListener('error', showError);

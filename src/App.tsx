@@ -52,11 +52,7 @@ function ShortSlugResolver({ slug }: { slug: string }) {
   }, [slug]);
 
   if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-xs font-mono text-slate-500">
-        Loading preview...
-      </div>
-    );
+    return <div className="fixed inset-0 w-screen h-[100dvh] bg-black" />;
   }
   if (status === 'preview') {
     return <VideoPreviewPage slug={slug} />;

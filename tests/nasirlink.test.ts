@@ -704,5 +704,69 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     expect(html1).toContain('<meta property="og:video:height" content="1278" />');
     expect(html1).toContain('<meta name="twitter:player:width" content="720" />');
     expect(html1).toContain('<meta name="twitter:player:height" content="1278" />');
+
+    // ================= FULLSCREEN VIDEO EXPERIENCE & METADATA CLEANUP =================
+    // 1. Create a video link with no explicit title or description
+    const createRes = await worker.fetch(
+      new Request('https://nasirlink.com/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinationUrl: 'https://urlbit.pro/target-page',
+          customAlias: 'bV3olu',
+          linkType: 'video',
+          previewEnabled: true,
+          videoUrl: 'https://cdn.example.com/videos/stream.mp4',
+          videoWidth: 1080,
+          videoHeight: 1920,
+        }),
+      }),
+      env
+    );
+    expect(createRes.status).toBe(201);
+
+    // 2. Metadata cleanup: verify Facebook OpenGraph / Twitter metadata does not contain generic strings
+    const shareRes = await worker.fetch(new Request('https://nasirlink.com/s/bV3olu'), env);
+    expect(shareRes.status).toBe(200);
+    const shareHtml = await shareRes.text();
+
+    // No generic slug-based title or generic description
+    expect(shareHtml).not.toContain('Video Preview: bV3olu');
+    expect(shareHtml).not.toContain('Watch video and continue to urlbit.pro');
+    expect(shareHtml).not.toContain('Watch video and continue to');
+    expect(shareHtml).not.toContain('Video Preview:');
+
+    // Confirms Open Graph & Twitter metadata use configured video & embed URL
+    expect(shareHtml).toContain('<meta property="og:video" content="https://cdn.example.com/videos/stream.mp4" />');
+    expect(shareHtml).toContain('<meta property="og:video:type" content="video/mp4" />');
+    expect(shareHtml).toContain('<meta property="og:video:width" content="1080" />');
+    expect(shareHtml).toContain('<meta property="og:video:height" content="1920" />');
+    expect(shareHtml).toContain('<meta name="twitter:player" content="https://nasirlink.com/embed/bV3olu" />');
+    expect(shareHtml).toContain('<meta name="twitter:player:stream" content="https://cdn.example.com/videos/stream.mp4" />');
+
+    // 3. SSR landing body snapshot verification:
+    // Fullscreen 100vw x 100dvh, object-fit: contain, autoplay/muted/playsinline/preload, no poster, no controls, no text overlays, no buttons
+    expect(shareHtml).toContain('width:100vw;height:100dvh');
+    expect(shareHtml).toContain('object-fit:contain');
+    expect(shareHtml).toContain('autoplay muted playsinline loop preload="auto"');
+    expect(shareHtml).not.toContain(' controls');
+    expect(shareHtml).not.toMatch(/<video[^>]*\sposter=/);
+    expect(shareHtml).not.toContain('Short link destination');
+    expect(shareHtml).not.toContain('Open Destination Website');
+    expect(shareHtml).not.toContain('bV3olu · /s/bV3olu');
+
+    // 4. Normal short URL redirection still works
+    const redirectRes = await worker.fetch(
+      new Request('https://nasirlink.com/bV3olu', {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      }),
+      env
+    );
+    expect(redirectRes.status).toBe(302);
+    expect(redirectRes.headers.get('location')).toBe('https://urlbit.pro/target-page');
+
+    const directRRes = await worker.fetch(new Request('https://nasirlink.com/r/bV3olu'), env);
+    expect(directRRes.status).toBe(302);
+    expect(directRRes.headers.get('location')).toBe('https://urlbit.pro/target-page');
   });
 });
