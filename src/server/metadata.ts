@@ -180,10 +180,13 @@ export function resolveEffectiveVideo(
     : link.videoMimeType;
 
   const baseTitle = useGlobal
-    ? globalConfig?.globalVideoTitle?.trim() || link.videoTitle?.trim() || `Video Preview: ${link.slug}`
-    : link.videoTitle?.trim() || `Video Preview: ${link.slug}`;
+    ? globalConfig?.globalVideoTitle?.trim() || link.videoTitle?.trim() || ''
+    : link.videoTitle?.trim() || '';
   const title = pickTitleFromVariants(link, baseTitle);
 
+  const description = useGlobal
+    ? globalConfig?.globalVideoDescription?.trim() || link.videoDescription?.trim() || ''
+    : link.videoDescription?.trim() || '';
 
   if (!rawVideoUrl) {
     return {
@@ -300,7 +303,7 @@ export function buildSocialMetadata(
       ? 'summary_large_image'
       : 'player'
     : 'summary_large_image';
-  const siteName = (globalConfig?.siteName || '').trim() || '';
+  const siteName = (globalConfig?.siteName || 'NasirLink').trim() || 'NasirLink';
 
   const metaLines: string[] = [];
 
@@ -308,12 +311,12 @@ export function buildSocialMetadata(
     metaLines.push(
       `<meta name="twitter:card" content="${effectiveCardType}" />`,
       ...(host ? [`<meta name="twitter:domain" content="${escapeHtml(host)}" />`] : []),
-      `<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`,
+      ...(resolved.title ? [`<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`] : []),
       ...(resolved.description
         ? [`<meta name="twitter:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
       `<meta name="twitter:image" content="${escapeHtml(posterUrl)}" />`,
-      `<meta name="twitter:image:alt" content="${escapeHtml(resolved.title)}" />`,
+      `<meta name="twitter:image:alt" content="${escapeHtml(resolved.title || 'Video')}" />`,
       ...(effectiveCardType === 'player'
         ? [
             `<meta name="twitter:player" content="${escapeHtml(playerUrl)}" />`,
@@ -325,7 +328,7 @@ export function buildSocialMetadata(
         : []),
       `<meta property="og:site_name" content="${escapeHtml(siteName)}" />`,
       `<meta property="og:type" content="video.other" />`,
-      `<meta property="og:title" content="${escapeHtml(resolved.title)}" />`,
+      ...(resolved.title ? [`<meta property="og:title" content="${escapeHtml(resolved.title)}" />`] : []),
       ...(resolved.description
         ? [`<meta property="og:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
@@ -346,13 +349,15 @@ export function buildSocialMetadata(
       `<meta property="og:video:type" content="${escapeHtml(resolved.mimeType)}" />`,
       `<meta property="og:video:width" content="${effectiveWidth}" />`,
       `<meta property="og:video:height" content="${effectiveHeight}" />`,
-      `<link rel="alternate" type="application/json+oembed" href="${escapeHtml(oembedUrl)}" title="${escapeHtml(resolved.title)}" />`
+      ...(resolved.title
+        ? [`<link rel="alternate" type="application/json+oembed" href="${escapeHtml(oembedUrl)}" title="${escapeHtml(resolved.title)}" />`]
+        : [`<link rel="alternate" type="application/json+oembed" href="${escapeHtml(oembedUrl)}" />`])
     );
   } else {
     metaLines.push(
       `<meta property="og:site_name" content="${escapeHtml(siteName)}" />`,
       `<meta property="og:type" content="website" />`,
-      `<meta property="og:title" content="${escapeHtml(resolved.title)}" />`,
+      ...(resolved.title ? [`<meta property="og:title" content="${escapeHtml(resolved.title)}" />`] : []),
       ...(resolved.description
         ? [`<meta property="og:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
@@ -360,7 +365,7 @@ export function buildSocialMetadata(
       `<meta property="og:image" content="${escapeHtml(posterUrl)}" />`,
       `<meta property="og:image:secure_url" content="${escapeHtml(posterUrl)}" />`,
       `<meta name="twitter:card" content="summary_large_image" />`,
-      `<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`,
+      ...(resolved.title ? [`<meta name="twitter:title" content="${escapeHtml(resolved.title)}" />`] : []),
       ...(resolved.description
         ? [`<meta name="twitter:description" content="${escapeHtml(resolved.description)}" />`]
         : []),
@@ -478,47 +483,22 @@ export function renderLandingBodySnapshot(
     medium: link.utmMedium,
     campaign: link.utmCampaign,
   });
-  const destDomain = getSafeDomain(finalDest);
   const safeDest = escapeHtml(finalDest);
-  const safeDomain = escapeHtml(destDomain);
-  const safeTitle = escapeHtml(meta.title);
-  const safeDesc = escapeHtml(meta.description);
   const safeVideo = escapeHtml(meta.ogVideo);
-  const hasRealPoster = Boolean((link.thumbnailUrl || '').trim());
-  const safePoster = hasRealPoster ? escapeHtml(meta.ogImage || resolvePosterAccessUrl(link, origin)) : '';
-  const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
   const safeMime = escapeHtml(meta.ogVideoType || 'video/mp4');
-  const aspectCss =
-    meta.ogVideoWidth > 0 && meta.ogVideoHeight > 0
-      ? `${meta.ogVideoWidth} / ${meta.ogVideoHeight}`
-      : '9 / 16';
 
-  return `<main style="max-width:720px;margin:0 auto;padding:24px 16px;font-family:system-ui,-apple-system,sans-serif;color:#0f172a;">
+  return `<main style="position:fixed;inset:0;width:100vw;height:100dvh;background:#000000;margin:0;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;z-index:9999;">
       ${
         meta.hasValidVideo && safeVideo
-          ? `<div style="background:#000;display:flex;justify-content:center;align-items:center;">
-              <video controls autoplay muted playsinline loop preload="auto"${posterAttr} style="width:100%;max-height:75vh;aspect-ratio:${aspectCss};object-fit:contain;display:block;background:#000;">
+          ? `<a href="${safeDest}" style="display:flex;align-items:center;justify-content:center;width:100vw;height:100dvh;text-decoration:none;cursor:pointer;background:#000000;border:none;outline:none;margin:0;padding:0;">
+              <video autoplay muted playsinline loop preload="auto" style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;object-fit:contain;display:block;background:#000000;border:none;outline:none;">
                 <source src="${safeVideo}" type="${safeMime}" />
               </video>
-            </div>
-            ${
-              meta.sourceUrl && meta.sourceDomain
-                ? `<div style="margin-top:8px;font-size:13px;">
-                    <a href="${escapeHtml(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:#475569;text-decoration:none;">From ${escapeHtml(meta.sourceDomain)}</a>
-                  </div>`
-                : ''
-            }`
-          : `<div style="padding:20px;border:1px solid #fecdd3;background:#fff1f2;color:#9f1239;font-size:14px;">
+            </a>`
+          : `<div style="color:#ffffff;font-family:sans-serif;font-size:14px;padding:20px;text-align:center;">
               ${escapeHtml(meta.videoError || 'Configured video is unavailable.')}
             </div>`
       }
-      <h1 style="font-size:20px;font-weight:700;margin:16px 0 6px;">${safeTitle}</h1>
-      ${safeDesc ? `<p style="font-size:14px;color:#475569;margin:0 0 16px;line-height:1.5;">${safeDesc}</p>` : ''}
-      <div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;">
-        <div style="font-size:12px;color:#64748b;margin-bottom:4px;">Short link destination: <strong>${safeDomain}</strong></div>
-        <div style="font-size:12px;font-family:monospace;color:#334155;word-break:break-all;margin-bottom:12px;">${safeDest}</div>
-        <a href="${safeDest}" rel="noopener noreferrer" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 18px;">Open Destination Website</a>
-      </div>
     </main>`;
 }
 
@@ -544,7 +524,7 @@ export function injectVideoMetaIntoHtml(
 
   const headBlock = `
     <meta name="clckd" content="a6c0dfb12e845a3e3e7915edcbcde473" />
-    <title>${escapeHtml(meta.title || 'Video Preview')}</title>
+    <title>${escapeHtml(meta.title || '')}</title>
     ${meta.description ? `<meta name="description" content="${escapeHtml(meta.description)}" />` : ''}
     <link rel="canonical" href="${escapeHtml(meta.url)}" />
     ${meta.renderedMetaHtml || ''}
@@ -573,12 +553,12 @@ export function renderSocialCrawlerHtml(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="clckd" content="a6c0dfb12e845a3e3e7915edcbcde473" />
-    <title>${escapeHtml(meta.title || 'Video Preview')}</title>
+    <title>${escapeHtml(meta.title || '')}</title>
     ${meta.description ? `<meta name="description" content="${escapeHtml(meta.description)}" />` : ''}
     <link rel="canonical" href="${escapeHtml(meta.url)}" />
     ${meta.renderedMetaHtml || ''}
   </head>
-  <body style="margin:0;background:#ffffff;">
+  <body style="margin:0;background:#000000;">
     ${body}
   </body>
 </html>`;
@@ -613,10 +593,10 @@ export function renderPlayerPageHtml(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="clckd" content="a6c0dfb12e845a3e3e7915edcbcde473" />
-    <title>${title}</title>
-    <meta property="og:title" content="${title}" />
-    <meta property="og:image" content="${safePoster}" />
-    <meta name="twitter:image" content="${safePoster}" />
+    <title>${title || ''}</title>
+    ${title ? `<meta property="og:title" content="${title}" />` : ''}
+    ${safePoster ? `<meta property="og:image" content="${safePoster}" />` : ''}
+    ${safePoster ? `<meta name="twitter:image" content="${safePoster}" />` : ''}
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
