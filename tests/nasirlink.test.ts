@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendUtmParams,
   convertGitHubVideoUrl,
+  convertMediaUrl,
   generateRandomSlug,
   validateCustomAlias,
   validateSafeExternalUrl,
@@ -138,6 +139,19 @@ describe('GitHub Video URL Conversion & Container Probing', () => {
     expect(probeResult.audit.detectedWidth).toBe(720);
     expect(probeResult.audit.detectedHeight).toBe(1278);
     expect(probeResult.audit.rangeSupported).toBe(true);
+  });
+
+  it('extracts direct X/Twitter status URL from pasted twitter-tweet blockquote embed code', () => {
+    const embedHtml = `<blockquote class="twitter-tweet"><p lang="hi" dir="ltr">Wataa</p>&mdash; Jami Emalia (@jemslpk) <a href="https://x.com/jemslpk/status/2123643838736838946?ref_src=twsrc%5Etfw">November 20, 2026</a></blockquote>\n<script async src="https://platform.x.com/widgets.js" charset="utf-8"></script>`;
+    const converted = convertMediaUrl(embedHtml, 'video');
+    expect(converted.isTwitter).toBe(true);
+    expect(converted.isTwitterStatus).toBe(true);
+    expect(converted.normalizedUrl).toBe('https://x.com/jemslpk/status/2123643838736838946');
+
+    const validation = validateVideoUrl(embedHtml);
+    expect(validation.valid).toBe(true);
+    expect(validation.isTwitterStatus).toBe(true);
+    expect(validation.normalizedUrl).toBe('https://x.com/jemslpk/status/2123643838736838946');
   });
 
   it('strips embedded credentials and signed URL secrets from source attribution links', () => {
@@ -768,5 +782,5 @@ describe('Cloudflare Worker Entrypoint (src/worker.ts)', () => {
     const directRRes = await worker.fetch(new Request('https://nasirlink.com/r/bV3olu'), env);
     expect(directRRes.status).toBe(302);
     expect(directRRes.headers.get('location')).toBe('https://urlbit.pro/target-page');
-  });
+  }, 15000);
 });

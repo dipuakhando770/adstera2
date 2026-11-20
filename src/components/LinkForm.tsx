@@ -221,6 +221,14 @@ export function LinkForm({
   // Auto-convert GitHub, Imgur, & X/Twitter video URLs locally + read container hints
   const handleVideoUrlChange = (raw: string) => {
     const converted = convertMediaUrl(raw, 'video');
+    const textMatch = raw.match(/<p[^>]*>(.*?)<\/p>/i);
+    if (textMatch && !videoTitle.trim()) {
+      const cleanTitle = textMatch[1].replace(/<[^>]+>/g, '').trim();
+      if (cleanTitle) {
+        setVideoTitle(cleanTitle);
+      }
+    }
+
     if (converted.convertedFromGithub) {
       setVideoUrl(converted.normalizedUrl);
       notify('Converted GitHub repository link to raw video stream URL', 'info');
@@ -267,17 +275,23 @@ export function LinkForm({
         normalizedUrl: localCheck.normalizedUrl,
         mimeType: localCheck.mimeType,
       });
+      if (converted.isTwitterStatus) {
+        setTimeout(() => {
+          runServerVideoCheck(converted.normalizedUrl);
+        }, 150);
+      }
     }
   };
 
-  const runServerVideoCheck = async () => {
-    if (!videoUrl.trim()) return;
+  const runServerVideoCheck = async (overrideUrl?: string) => {
+    const targetUrl = (overrideUrl || videoUrl).trim();
+    if (!targetUrl) return;
     setVideoCheck((prev) => ({ ...prev, checking: true }));
     try {
       const res = await fetch('/api/links/validate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl }),
+        body: JSON.stringify({ videoUrl: targetUrl }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -289,6 +303,12 @@ export function LinkForm({
         });
       } else {
         setVideoUrl(data.normalizedUrl);
+        if (data.thumbnailUrl && (!thumbnailUrl.trim() || thumbnailUrl.startsWith('data:image/'))) {
+          setThumbnailUrl(data.thumbnailUrl);
+        }
+        if (data.title && !videoTitle.trim()) {
+          setVideoTitle(data.title);
+        }
         const audit: VideoStreamAudit | undefined = data.audit;
         if (audit?.detectedWidth && audit?.detectedHeight) {
           setVideoWidth(audit.detectedWidth);
@@ -611,7 +631,7 @@ export function LinkForm({
                     />
                     <button
                       type="button"
-                      onClick={runServerVideoCheck}
+                      onClick={() => runServerVideoCheck()}
                       disabled={videoCheck.checking || !videoUrl.trim()}
                       className="px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap"
                     >

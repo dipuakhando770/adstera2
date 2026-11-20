@@ -34,6 +34,8 @@ export interface VideoProbeResult {
   valid: boolean;
   normalizedUrl: string;
   convertedFromGithub: boolean;
+  thumbnailUrl?: string | null;
+  title?: string | null;
   audit: VideoStreamAudit;
 }
 
@@ -533,11 +535,15 @@ export async function probeVideoStream(
           const streamUrl = mediaVideos[0].url;
           const detectedW = mediaVideos[0].width || null;
           const detectedH = mediaVideos[0].height || null;
+          const thumbUrl = mediaVideos[0].thumbnail_url || null;
+          const tweetText = data?.tweet?.text || null;
           if (streamUrl && streamUrl.startsWith('https://')) {
             return {
               valid: true,
               normalizedUrl: streamUrl,
               convertedFromGithub: false,
+              thumbnailUrl: thumbUrl,
+              title: tweetText,
               audit: {
                 videoReachable: true,
                 videoStatus: 200,

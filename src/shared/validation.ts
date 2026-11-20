@@ -220,10 +220,30 @@ export function convertImgurMediaUrl(
   return { normalizedUrl: trimmed, convertedFromImgur: false };
 }
 
+export function extractTwitterUrlFromEmbed(htmlOrText: string): string | null {
+  const trimmed = htmlOrText.trim();
+  const embedMatch = trimmed.match(/https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([^/]+)\/status\/(\d+)/i);
+  if (embedMatch) {
+    return `https://x.com/${embedMatch[1]}/status/${embedMatch[2]}`;
+  }
+  return null;
+}
+
 export function convertTwitterMediaUrl(
   inputUrl: string
 ): { normalizedUrl: string; isTwitter: boolean; isStatus: boolean } {
-  const trimmed = inputUrl.trim();
+  let trimmed = inputUrl.trim();
+  if (
+    trimmed.includes('<blockquote') ||
+    trimmed.includes('<script') ||
+    trimmed.includes('<iframe') ||
+    (trimmed.includes('status/') && trimmed.includes('<'))
+  ) {
+    const extracted = extractTwitterUrlFromEmbed(trimmed);
+    if (extracted) {
+      trimmed = extracted;
+    }
+  }
   try {
     const parsed = new URL(trimmed);
     const host = parsed.hostname.toLowerCase();

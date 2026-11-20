@@ -552,6 +552,8 @@ export function createApiRouter(): express.Router {
       valid: true,
       normalizedUrl: probe.normalizedUrl,
       convertedFromGithub: probe.convertedFromGithub,
+      thumbnailUrl: probe.thumbnailUrl || null,
+      title: probe.title || null,
       mimeType: probe.audit.videoMimeType,
       httpsVideo: probe.audit.videoHttps,
       reachable: probe.audit.videoReachable,
